@@ -5,7 +5,7 @@ let flightsCurrentPage = 1;
 let flightsPerPage = 25;
 let flightsSearchTerm = '';
 let flightsFilters = { status: '' };
-let flightsSort = 'departureTime-desc';
+let flightsSort = 'flightId-asc';
 
 document.addEventListener('DOMContentLoaded', () => {
     initFlightsPage();
@@ -44,6 +44,22 @@ async function loadFlights() {
         toggleLoading(false);
     }
 }
+
+// Airline stats table removed per requirements
+
+// auto refresh when on flights page every 60s
+let flightsAutoTimer = null;
+function ensureFlightsAutoRefresh() {
+    if (flightsAutoTimer) clearInterval(flightsAutoTimer);
+    flightsAutoTimer = setInterval(() => {
+        const container = document.getElementById('flights-page');
+        if (container && container.classList.contains('active')) {
+            loadFlights();
+        }
+    }, 60000);
+}
+
+document.addEventListener('DOMContentLoaded', ensureFlightsAutoRefresh);
 
 function applyFlightsFilters() {
     const q = flightsSearchTerm;
@@ -254,6 +270,21 @@ async function openFlightModal(title, flightId) {
                 <input type="text" id="gate" value="${flight?.gate || ''}">
             </div>
         </div>
+        ${flight ? `
+        <div class="form-row">
+            <div class="form-group">
+                <label>Trạng thái</label>
+                <select id="status">
+                    <option value="">Tự động</option>
+                    <option value="SCHEDULED" ${flight?.status === 'SCHEDULED' ? 'selected' : ''}>Scheduled</option>
+                    
+                    <option value="DELAYED" ${flight?.status === 'DELAYED' ? 'selected' : ''}>Delayed</option>
+                    <option value="COMPLETED" ${flight?.status === 'COMPLETED' ? 'selected' : ''}>Completed</option>
+                    <option value="CANCELLED" ${flight?.status === 'CANCELLED' ? 'selected' : ''}>Cancelled</option>
+                </select>
+            </div>
+        </div>
+        ` : ''}
         <div class="form-actions">
             <button type="button" class="btn btn-secondary" onclick="closeModal()">Hủy</button>
             <button type="submit" class="btn btn-primary">Lưu</button>
@@ -289,7 +320,8 @@ async function openFlightModal(title, flightId) {
 }
 
 function collectFlightPayload() {
-    return {
+    const statusEl = document.getElementById('status');
+    const payload = {
         flightNumber: document.getElementById('flightNumber').value,
         airlineId: parseInt(document.getElementById('airlineId').value),
         aircraftTypeId: parseInt(document.getElementById('aircraftTypeId').value),
@@ -300,6 +332,11 @@ function collectFlightPayload() {
         basePrice: parseFloat(document.getElementById('basePrice').value),
         gate: document.getElementById('gate').value || null
     };
+    // Chỉ thêm status nếu có field (khi edit)
+    if (statusEl && statusEl.value) {
+        payload.status = statusEl.value;
+    }
+    return payload;
 }
 
 function selectByText(selectId, text) {

@@ -17,11 +17,15 @@ async function apiCall(endpoint, options = {}) {
         });
 
         if (!response.ok) {
-            const errorData = await response.json().catch(() => ({}));
+            let errorData = {};
+            try { errorData = await response.json(); } catch (e) {}
             throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
         }
 
-        return await response.json();
+        if (response.status === 204) return true;
+        const text = await response.text();
+        if (!text) return true;
+        return JSON.parse(text);
     } catch (error) {
         console.error('API Error:', error);
         throw error;
@@ -60,6 +64,10 @@ class DashboardAPI {
 
     async getPopularRoutes(topCount = 10) {
         return await apiCall(`/admin/Dashboard/popular-routes?topCount=${topCount}`, { method: 'GET' });
+    }
+
+    async getAirlineStats() {
+        return await apiCall('/admin/Dashboard/airline-stats', { method: 'GET' });
     }
 }
 
@@ -138,6 +146,10 @@ class FlightsAPI {
 class BookingsAPI {
     async getBookings() {
         return await apiCall('/Bookings');
+    }
+
+    async getAdminBookings() {
+        return await apiCall('/admin/Bookings');
     }
 
     async getBookingById(bookingId) {

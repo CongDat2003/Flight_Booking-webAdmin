@@ -61,7 +61,8 @@ function loadPage(page) {
         'bookings': 'Quản lý đặt vé',
         'users': 'Quản lý khách hàng',
         'payments': 'Quản lý thanh toán',
-        'flights': 'Quản lý chuyến bay'
+        'flights': 'Quản lý chuyến bay',
+        'airline-revenue': 'Doanh thu hãng bay'
     };
     document.getElementById('page-title').textContent = titles[page];
     
@@ -86,6 +87,9 @@ function loadPage(page) {
             if (typeof loadFlights === 'function') {
                 loadFlights();
             }
+            break;
+        case 'airline-revenue':
+            loadAirlineRevenue();
             break;
     }
 }
@@ -117,6 +121,123 @@ async function loadDashboard() {
     }
 }
 
+// ================= Airline Revenue =================
+let airlineRevenueData = [];
+let airlineRevenueCurrentPage = 1;
+let airlineRevenuePerPage = 25;
+let airlineRevenueSearchTerm = '';
+let airlineRevenueSort = 'revenue-desc';
+
+async function loadAirlineRevenue() {
+    try {
+        showLoading('airline-revenue-page');
+        const stats = await api.dashboard.getAirlineStats();
+        airlineRevenueData = stats || [];
+        airlineRevenueCurrentPage = 1;
+        displayAirlineRevenue();
+        hideLoading('airline-revenue-page');
+    } catch (error) {
+        console.error('Error loading airline revenue:', error);
+        showError('airline-revenue-page', 'Lỗi khi tải doanh thu hãng bay');
+        hideLoading('airline-revenue-page');
+    }
+}
+
+function handleAirlineRevenueSearch(event) {
+    if (event.key === 'Enter' || event.target.value === '') {
+        airlineRevenueSearchTerm = event.target.value.toLowerCase();
+        airlineRevenueCurrentPage = 1;
+        displayAirlineRevenue();
+    }
+}
+
+function sortAirlineRevenue() {
+    airlineRevenueSort = document.getElementById('airline-revenue-sort').value;
+    displayAirlineRevenue();
+}
+
+function changeAirlineRevenuePerPage() {
+    airlineRevenuePerPage = parseInt(document.getElementById('airline-revenue-per-page').value);
+    airlineRevenueCurrentPage = 1;
+    displayAirlineRevenue();
+}
+
+function changeAirlineRevenuePage(page) {
+    let totalPages = Math.ceil(getFilteredAirlineRevenue().length / airlineRevenuePerPage);
+    if (page === 'prev') {
+        airlineRevenueCurrentPage = Math.max(1, airlineRevenueCurrentPage - 1);
+    } else if (page === 'next') {
+        airlineRevenueCurrentPage = Math.min(totalPages, airlineRevenueCurrentPage + 1);
+    } else if (page === 1) {
+        airlineRevenueCurrentPage = 1;
+    } else if (page === 999) {
+        airlineRevenueCurrentPage = totalPages;
+    }
+    displayAirlineRevenue();
+}
+
+function getFilteredAirlineRevenue() {
+    let filtered = airlineRevenueData.filter(item => {
+        if (airlineRevenueSearchTerm && !(item.airlineName?.toLowerCase().includes(airlineRevenueSearchTerm))) {
+            return false;
+        }
+        return true;
+    });
+
+    const [sortField, sortOrder] = airlineRevenueSort.split('-');
+    filtered.sort((a, b) => {
+        let aVal = a[sortField];
+        let bVal = b[sortField];
+
+        if (sortField === 'airlineName') {
+            aVal = (aVal || '').toLowerCase();
+            bVal = (bVal || '').toLowerCase();
+        } else {
+            aVal = Number(aVal || 0);
+            bVal = Number(bVal || 0);
+        }
+
+        if (sortOrder === 'asc') {
+            return aVal > bVal ? 1 : -1;
+        } else {
+            return aVal < bVal ? 1 : -1;
+        }
+    });
+
+    return filtered;
+}
+
+function displayAirlineRevenue() {
+    const tbody = document.getElementById('airline-revenue-table-body');
+    if (!tbody) return;
+
+    if (!airlineRevenueData || airlineRevenueData.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" class="empty-state"><i class="fas fa-coins"></i><h3>Chưa có dữ liệu</h3></td></tr>';
+        return;
+    }
+
+    const filtered = getFilteredAirlineRevenue();
+    const start = (airlineRevenueCurrentPage - 1) * airlineRevenuePerPage;
+    const end = start + airlineRevenuePerPage;
+    const paginated = filtered.slice(start, end);
+
+    tbody.innerHTML = paginated.map(item => `
+        <tr>
+            <td>${item.airlineName}</td>
+            <td>${item.totalBookings || 0}</td>
+            <td>${item.paidBookings || 0}</td>
+            <td>${formatCurrency(item.revenue || 0)}</td>
+        </tr>
+    `).join('');
+
+    const totalPages = Math.max(1, Math.ceil(filtered.length / airlineRevenuePerPage));
+    document.getElementById('airline-revenue-page-info').textContent = `Trang ${airlineRevenueCurrentPage} / ${totalPages}`;
+    document.getElementById('airline-revenue-page-prev').disabled = airlineRevenueCurrentPage === 1;
+    document.getElementById('airline-revenue-page-next').disabled = airlineRevenueCurrentPage >= totalPages || totalPages === 0;
+    document.getElementById('airline-revenue-page-first').disabled = airlineRevenueCurrentPage === 1;
+    document.getElementById('airline-revenue-page-last').disabled = airlineRevenueCurrentPage >= totalPages || totalPages === 0;
+}
+
 function updateDashboardStats(bookings, users, payments) {
     // Total bookings
     document.getElementById('total-bookings').textContent = bookings.length || 0;
@@ -124,10 +245,10 @@ function updateDashboardStats(bookings, users, payments) {
     // Total users
     document.getElementById('total-users').textContent = users.length || 0;
     
-    // Total revenue
-    const totalRevenue = payments
-        .filter(p => p.status === 'SUCCESS' || p.status === 'PAID')
-        .reduce((sum, p) => sum + parseFloat(p.amount || 0), 0);
+    // Total revenue (authoritative: bookings with PaymentStatus = PAID)
+    const totalRevenue = (bookings || [])
+        .filter(b => b.paymentStatus === 'PAID')
+        .reduce((sum, b) => sum + parseFloat(b.totalAmount || 0), 0);
     document.getElementById('total-revenue').textContent = formatCurrency(totalRevenue);
     
     // Success rate
@@ -147,7 +268,7 @@ async function loadCharts(bookings, payments) {
         
         if (revenueChart) revenueChart.destroy();
         
-        const monthlyRevenue = getMonthlyRevenue(payments);
+        const monthlyRevenue = getMonthlyRevenueFromBookings(bookings);
         revenueChart = new Chart(revenueCtx.getContext('2d'), {
         type: 'line',
         data: {
@@ -344,7 +465,7 @@ async function loadCharts(bookings, payments) {
     }
 }
 
-function getMonthlyRevenue(payments) {
+function getMonthlyRevenueFromBookings(bookings) {
     const monthlyData = {};
     const currentDate = new Date();
     
@@ -355,15 +476,15 @@ function getMonthlyRevenue(payments) {
         monthlyData[key] = 0;
     }
     
-    // Sum revenue by month
-    if (payments && payments.length > 0) {
-        payments
-            .filter(p => p.status === 'SUCCESS' || p.status === 'PAID')
-            .forEach(payment => {
-                const date = new Date(payment.createdAt || payment.paymentDate);
+    // Sum revenue by month from bookings with PaymentStatus = PAID
+    if (bookings && bookings.length > 0) {
+        bookings
+            .filter(b => b.paymentStatus === 'PAID' && b.bookingDate)
+            .forEach(booking => {
+                const date = new Date(booking.bookingDate);
                 const key = date.toISOString().substring(0, 7);
                 if (monthlyData.hasOwnProperty(key)) {
-                    monthlyData[key] += parseFloat(payment.amount || 0);
+                    monthlyData[key] += parseFloat(booking.totalAmount || 0);
                 }
             });
     }
@@ -509,9 +630,10 @@ function getAirlineStats(bookings) {
 async function loadBookings() {
     try {
         showLoading('bookings-page');
-        const bookings = await api.getBookings();
+        // Use admin endpoint for proper User info
+        const bookings = await api.bookings.getAdminBookings();
         // Lưu vào global array để dùng cho search/filter/sort/pagination
-        allBookingsData = bookings;
+        allBookingsData = bookings || [];
         // Gọi hàm display mới với pagination
         displayBookings();
         hideLoading('bookings-page');
@@ -588,7 +710,13 @@ function setupModals() {
 // View Booking Detail
 async function viewBookingDetail(bookingId) {
     try {
-        const booking = await api.getBookingById(bookingId);
+        // Use admin endpoint to get full seat info (including PassengerIdNumber)
+        let booking = null;
+        try {
+            booking = await apiCall(`/admin/Bookings/${bookingId}`);
+        } catch (e) {
+            booking = await api.getBookingById(bookingId);
+        }
         const modal = document.getElementById('booking-detail-modal');
         const content = document.getElementById('booking-detail-content');
         
@@ -609,6 +737,7 @@ async function viewBookingDetail(bookingId) {
                             <th>Số ghế</th>
                             <th>Hạng ghế</th>
                             <th>Tên hành khách</th>
+                            <th>CCCD/CMND</th>
                             <th>Giá</th>
                         </tr>
                     </thead>
@@ -616,8 +745,9 @@ async function viewBookingDetail(bookingId) {
                         ${booking.seats?.map(seat => `
                             <tr>
                                 <td>${seat.seatNumber}</td>
-                                <td>${seat.seatClassName}</td>
+                                <td>${seat.seatClassName || seat.seatClass}</td>
                                 <td>${seat.passengerName}</td>
+                                <td>${seat.passengerIdNumber || 'N/A'}</td>
                                 <td>${formatCurrency(seat.seatPrice)}</td>
                             </tr>
                         `).join('') || '<tr><td colspan="4">Không có dữ liệu</td></tr>'}
@@ -630,6 +760,64 @@ async function viewBookingDetail(bookingId) {
     } catch (error) {
         console.error('Error loading booking detail:', error);
         alert('Lỗi khi tải chi tiết đặt vé');
+    }
+}
+
+// View User Detail
+async function viewUserDetail(userId) {
+    try {
+        const user = await api.getUserById(userId);
+        const modal = document.getElementById('user-detail-modal');
+        const content = document.getElementById('user-detail-content');
+        
+        content.innerHTML = `
+            <div class="user-detail">
+                <h4>Thông tin tài khoản</h4>
+                <div class="detail-grid">
+                    <div class="detail-item">
+                        <strong>ID:</strong> ${user.userId}
+                    </div>
+                    <div class="detail-item">
+                        <strong>Tên đăng nhập:</strong> ${user.username}
+                    </div>
+                    <div class="detail-item">
+                        <strong>Email:</strong> ${user.email}
+                    </div>
+                    <div class="detail-item">
+                        <strong>Họ tên:</strong> ${user.fullName || 'N/A'}
+                    </div>
+                    <div class="detail-item">
+                        <strong>Số điện thoại:</strong> ${user.phone || 'N/A'}
+                    </div>
+                    <div class="detail-item">
+                        <strong>Ngày sinh:</strong> ${user.dateOfBirth ? formatDate(user.dateOfBirth) : 'N/A'}
+                    </div>
+                    <div class="detail-item">
+                        <strong>Giới tính:</strong> ${user.gender || 'N/A'}
+                    </div>
+                    <div class="detail-item">
+                        <strong>Trạng thái:</strong> <span class="status-badge status-${user.isActive ? 'active' : 'inactive'}">${user.isActive ? 'Hoạt động' : 'Không hoạt động'}</span>
+                    </div>
+                    <div class="detail-item">
+                        <strong>Ngày tạo:</strong> ${formatDate(user.createdAt)}
+                    </div>
+                    <div class="detail-item">
+                        <strong>Ngày cập nhật:</strong> ${formatDate(user.updatedAt)}
+                    </div>
+                    <div class="detail-item">
+                        <strong>Tổng đặt vé:</strong> ${user.totalBookings || 0}
+                    </div>
+                    <div class="detail-item">
+                        <strong>Tổng chi tiêu:</strong> ${formatCurrency(user.totalSpent || 0)}
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        modal.style.display = 'block';
+    } catch (error) {
+        console.error('Error loading user detail:', error);
+        showAlert('Lỗi khi tải chi tiết khách hàng', 'error');
     }
 }
 
@@ -747,6 +935,7 @@ function getStatusText(status) {
         'CONFIRMED': 'Đã xác nhận',
         'PENDING': 'Chờ xử lý',
         'CANCELLED': 'Đã hủy',
+        'RESTORE_PENDING': 'Chờ duyệt khôi phục',
         'SUCCESS': 'Thành công',
         'FAILED': 'Thất bại',
         'REFUNDED': 'Đã hoàn tiền'
@@ -852,6 +1041,20 @@ function setupFormHandlers() {
     }
 }
 
+async function toggleUserActive(userId, isActive) {
+    try {
+        await apiCall(`/admin/Users/${userId}/status`, {
+            method: 'PUT',
+            body: JSON.stringify({ isActive: isActive })
+        });
+        showAlert(isActive ? 'Đã kích hoạt khách hàng' : 'Đã vô hiệu hóa khách hàng', 'success');
+        loadUsers();
+    } catch (e) {
+        console.error('Toggle user active error:', e);
+        showAlert('Lỗi cập nhật trạng thái khách hàng: ' + (e.message || ''), 'error');
+    }
+}
+
 // ============================================
 // BOOKING CRUD
 // ============================================
@@ -895,7 +1098,7 @@ async function loadBookingDropdowns() {
     try {
         const [users, flights] = await Promise.all([
             api.getUsers(),
-            api.getFlights()
+            api.getAllFlights()
         ]);
         
         // Load users
@@ -949,6 +1152,7 @@ async function handleBookingSubmit(e) {
 
 async function deleteBooking(bookingId) {
     try {
+        // Luôn hủy (đổi trạng thái), không xóa vĩnh viễn
         await api.cancelBooking(bookingId);
         showAlert('Hủy đặt vé thành công!', 'success');
         loadBookings();
@@ -1029,14 +1233,8 @@ async function handleUserSubmit(e) {
 }
 
 async function deleteUser(userId) {
-    try {
-        await api.deleteUser(userId);
-        showAlert('Xóa khách hàng thành công!', 'success');
-        loadUsers();
-    } catch (error) {
-        console.error('Error deleting user:', error);
-        showAlert('Lỗi khi xóa khách hàng: ' + error.message, 'error');
-    }
+    // Không còn xóa user. Dùng toggle kích hoạt/vô hiệu hóa thay thế.
+    showAlert('Không hỗ trợ xóa khách hàng. Vui lòng dùng nút Kích hoạt/Vô hiệu hóa.', 'info');
 }
 
 // ============================================
@@ -1068,9 +1266,25 @@ async function showEditPaymentModal(paymentId) {
         document.getElementById('payment-amount').value = payment.amount;
         document.getElementById('payment-status').value = payment.status;
         document.getElementById('payment-notes').value = payment.notes || '';
+        // Store current status to control submit behavior
+        let hidden = document.getElementById('payment-current-status');
+        if (!hidden) {
+            hidden = document.createElement('input');
+            hidden.type = 'hidden';
+            hidden.id = 'payment-current-status';
+            document.getElementById('payment-form').appendChild(hidden);
+        }
+        hidden.value = payment.status;
         
         // Load dropdowns
         await loadPaymentDropdowns();
+        // Lock booking selection in edit mode
+        const bookingSelect = document.getElementById('payment-booking-id');
+        if (bookingSelect) bookingSelect.disabled = true;
+        // If payment SUCCESS: lock amount only, allow changing method per new rule
+        const lockAmount = payment.status === 'SUCCESS';
+        document.getElementById('payment-method').disabled = false;
+        document.getElementById('payment-amount').disabled = lockAmount;
         
         document.getElementById('payment-form-modal').style.display = 'block';
     } catch (error) {
@@ -1103,12 +1317,24 @@ async function handlePaymentSubmit(e) {
     const formData = new FormData(e.target);
     const paymentData = Object.fromEntries(formData.entries());
     
-    // Convert amount to number
-    paymentData.amount = parseFloat(paymentData.amount);
+    // Convert amount to number only if present
+    if (paymentData.amount !== undefined && paymentData.amount !== '') {
+        const parsed = parseFloat(paymentData.amount);
+        if (!isNaN(parsed)) paymentData.amount = parsed; else delete paymentData.amount;
+    } else {
+        delete paymentData.amount;
+    }
     
     try {
         if (currentEditId) {
             // Update existing payment
+            // If current payment is SUCCESS, don't send amount or method
+            const currentStatusEl = document.getElementById('payment-current-status');
+            const currentStatus = currentStatusEl ? currentStatusEl.value : '';
+            if (currentStatus === 'SUCCESS') {
+                delete paymentData.amount;
+                delete paymentData.paymentMethod;
+            }
             await api.updatePayment(currentEditId, paymentData);
             showAlert('Cập nhật thanh toán thành công!', 'success');
         } else {
@@ -1166,6 +1392,28 @@ function showDeleteConfirm(message, callback) {
     document.getElementById('delete-confirm-message').textContent = message;
     deleteCallback = callback;
     document.getElementById('delete-confirm-modal').style.display = 'block';
+}
+
+async function approveRestore(bookingId) {
+    try {
+        await apiCall(`/admin/Bookings/${bookingId}/restore-approve`, { method: 'POST' });
+        showAlert('Đã duyệt khôi phục vé!', 'success');
+        loadBookings();
+    } catch (e) {
+        console.error('Approve restore error:', e);
+        showAlert('Lỗi duyệt khôi phục: ' + (e.message || ''), 'error');
+    }
+}
+
+async function rejectRestore(bookingId) {
+    try {
+        await apiCall(`/admin/Bookings/${bookingId}/restore-reject`, { method: 'POST' });
+        showAlert('Đã từ chối khôi phục vé!', 'info');
+        loadBookings();
+    } catch (e) {
+        console.error('Reject restore error:', e);
+        showAlert('Lỗi từ chối khôi phục: ' + (e.message || ''), 'error');
+    }
 }
 
 function confirmDelete() {
@@ -1382,10 +1630,8 @@ function displayBookings() {
         tbody.innerHTML = paginated.map(booking => `
             <tr>
                 <td>${booking.bookingReference || 'N/A'}</td>
-                <td>${booking.user?.fullName || booking.userName || 'N/A'}</td>
-                <td>${booking.seats?.length || booking.passengerCount || 0}</td>
+                <td>${booking.userName || booking.user?.fullName || 'N/A'}</td>
                 <td>${booking.flight?.flightNumber || booking.route || 'N/A'}</td>
-                <td>${getSeatClasses(booking.seats) || booking.seatClass || 'N/A'}</td>
                 <td>${formatCurrency(booking.totalAmount)}</td>
                 <td><span class="status-badge status-${booking.bookingStatus?.toLowerCase()}">${getStatusText(booking.bookingStatus)}</span></td>
                 <td>${formatDate(booking.bookingDate)}</td>
@@ -1394,9 +1640,18 @@ function displayBookings() {
                         <button class="action-btn view" onclick="viewBookingDetail(${booking.bookingId})" title="Xem chi tiết">
                             <i class="fas fa-eye"></i>
                         </button>
+                        ${booking.bookingStatus === 'RESTORE_PENDING' ? `
+                            <button class="action-btn edit" onclick="approveRestore(${booking.bookingId})" title="Duyệt khôi phục">
+                                <i class="fas fa-check"></i>
+                            </button>
+                            <button class="action-btn delete" onclick="rejectRestore(${booking.bookingId})" title="Từ chối khôi phục">
+                                <i class="fas fa-times"></i>
+                            </button>
+                        ` : `
                         <button class="action-btn delete" onclick="showDeleteConfirm('Bạn có chắc chắn muốn hủy đặt vé này?', () => deleteBooking(${booking.bookingId}))" title="Hủy đặt vé">
                             <i class="fas fa-ban"></i>
                         </button>
+                        `}
                     </div>
             </td>
         </tr>
@@ -1526,8 +1781,17 @@ function displayUsers() {
                 <td>${user.totalBookings || 0}</td>
                 <td>
                     <div class="action-buttons">
+                        <button class="action-btn view" onclick="viewUserDetail(${user.userId})" title="Xem chi tiết">
+                            <i class="fas fa-eye"></i>
+                        </button>
                         <button class="action-btn view" onclick="viewUserHistory(${user.userId})" title="Xem lịch sử">
                             <i class="fas fa-history"></i>
+                        </button>
+                        <button class="action-btn edit" onclick="showEditUserModal(${user.userId})" title="Chỉnh sửa">
+                            <i class="fas fa-edit"></i>
+                        </button>
+                        <button class="action-btn" onclick="toggleUserActive(${user.userId}, ${user.isActive ? 'false' : 'true'})" title="${user.isActive ? 'Vô hiệu hóa' : 'Kích hoạt'}">
+                            <i class="fas ${user.isActive ? 'fa-user-slash' : 'fa-user-check'}"></i>
                         </button>
                     </div>
             </td>
@@ -1675,6 +1939,9 @@ function displayPayments() {
                         <button class="action-btn edit" onclick="showEditPaymentModal(${payment.paymentId})" title="Chỉnh sửa">
                             <i class="fas fa-edit"></i>
                         </button>
+                        <button class="action-btn delete" onclick="showDeleteConfirm('Bạn có chắc chắn muốn xóa thanh toán này?', () => deletePayment(${payment.paymentId}))" title="Xóa">
+                            <i class="fas fa-trash"></i>
+                        </button>
                     </div>
                 </td>
             </tr>
@@ -1712,6 +1979,7 @@ function getStatusText(status) {
         'PENDING': 'Chờ xử lý',
         'CONFIRMED': 'Đã xác nhận',
         'CANCELLED': 'Đã hủy',
+        'RESTORE_PENDING': 'Chờ duyệt khôi phục',
         'PAID': 'Đã thanh toán'
     };
     return statusMap[status] || status;
