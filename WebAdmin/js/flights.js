@@ -35,14 +35,65 @@ async function loadFlights() {
     try {
         const flights = await api.getAllFlights();
         flightsData = Array.isArray(flights) ? flights : [];
+        
+        // Update stats
+        updateFlightsStats(flightsData);
+        
         applyFlightsFilters();
         renderFlightsTable();
+        
+        // Restore search/filter values
+        restoreFlightsFilters();
     } catch (err) {
         console.error('Load flights error:', err);
         renderFlightsEmpty('Không tải được danh sách chuyến bay');
     } finally {
         toggleLoading(false);
     }
+}
+
+function restoreFlightsFilters() {
+    const searchInput = document.getElementById('flights-search');
+    const statusFilter = document.getElementById('flights-status-filter');
+    const sortSelect = document.getElementById('flights-sort');
+    const perPageSelect = document.getElementById('flights-per-page');
+    
+    // Restore search value from sessionStorage if available
+    if (searchInput) {
+        const storedValue = sessionStorage.getItem('flights-search-value');
+        if (storedValue) {
+            searchInput.value = storedValue;
+        }
+    }
+    if (statusFilter && flightsFilters.status) {
+        statusFilter.value = flightsFilters.status;
+    }
+    if (sortSelect && flightsSort) {
+        sortSelect.value = flightsSort;
+    }
+    if (perPageSelect) {
+        perPageSelect.value = flightsPerPage;
+    }
+}
+
+function updateFlightsStats(flights) {
+    const total = flights.length;
+    const scheduled = flights.filter(f => f.status === 'SCHEDULED' || f.status === 'PREPARING' || f.status === 'DEPARTED').length;
+    const delayed = flights.filter(f => f.status === 'DELAYED').length;
+    const cancelled = flights.filter(f => f.status === 'CANCELLED').length;
+    const completed = flights.filter(f => f.status === 'COMPLETED').length;
+    
+    const totalEl = document.getElementById('flights-total');
+    const scheduledEl = document.getElementById('flights-scheduled');
+    const delayedEl = document.getElementById('flights-delayed');
+    const cancelledEl = document.getElementById('flights-cancelled');
+    const completedEl = document.getElementById('flights-completed');
+    
+    if (totalEl) totalEl.textContent = total;
+    if (scheduledEl) scheduledEl.textContent = scheduled;
+    if (delayedEl) delayedEl.textContent = delayed;
+    if (cancelledEl) cancelledEl.textContent = cancelled;
+    if (completedEl) completedEl.textContent = completed;
 }
 
 // Airline stats table removed per requirements
@@ -71,7 +122,18 @@ function applyFlightsFilters() {
             f.airlineName?.toLowerCase().includes(q) ||
             f.departureAirport?.toLowerCase().includes(q) ||
             f.arrivalAirport?.toLowerCase().includes(q);
-        const matchesStatus = !status || f.status === status;
+        
+        // Handle status filter - group PREPARING and DEPARTED with SCHEDULED
+        let matchesStatus = true;
+        if (status) {
+            if (status === 'SCHEDULED') {
+                // Match SCHEDULED, PREPARING, or DEPARTED
+                matchesStatus = f.status === 'SCHEDULED' || f.status === 'PREPARING' || f.status === 'DEPARTED';
+            } else {
+                matchesStatus = f.status === status;
+            }
+        }
+        
         return matchesQuery && matchesStatus;
     });
 
@@ -183,9 +245,17 @@ function formatTimeRange(start, end) {
     return `${s} - ${e}`;
 }
 
-function closeModal() {
-    const modal = document.getElementById('flightModal');
-    if (modal) modal.style.display = 'none';
+function closeModal(modalId) {
+    // Support both with and without parameter for compatibility
+    const modal = modalId ? document.getElementById(modalId) : document.getElementById('flightModal');
+    if (modal) {
+        modal.style.display = 'none';
+        // Reset form if exists
+        const form = modal.querySelector('form');
+        if (form) {
+            form.reset();
+        }
+    }
 }
 
 async function showAddFlightModal() {
@@ -286,7 +356,7 @@ async function openFlightModal(title, flightId) {
         </div>
         ` : ''}
         <div class="form-actions">
-            <button type="button" class="btn btn-secondary" onclick="closeModal()">Hủy</button>
+            <button type="button" class="btn btn-secondary" onclick="closeModal('flightModal')">Hủy</button>
             <button type="submit" class="btn btn-primary">Lưu</button>
         </div>
     `;
@@ -300,6 +370,204 @@ async function openFlightModal(title, flightId) {
 
     form.onsubmit = async (e) => {
         e.preventDefault();
+        
+        // Validation
+        const flightNumber = document.getElementById('flightNumber').value.trim();
+        const airlineId = document.getElementById('airlineId').value;
+        const aircraftTypeId = document.getElementById('aircraftTypeId').value;
+        const departureAirportId = document.getElementById('departureAirportId').value;
+        const arrivalAirportId = document.getElementById('arrivalAirportId').value;
+        const departureTime = document.getElementById('departureTime').value;
+        const arrivalTime = document.getElementById('arrivalTime').value;
+        const basePrice = document.getElementById('basePrice').value;
+        
+        // Flight Number validation
+        if (!flightNumber || flightNumber === '') {
+            showToast('Vui lòng nhập số hiệu chuyến bay', 'error');
+            document.getElementById('flightNumber').focus();
+            return;
+        }
+        
+        if (flightNumber.length < 2) {
+            showToast('Số hiệu chuyến bay phải có ít nhất 2 ký tự', 'error');
+            document.getElementById('flightNumber').focus();
+            return;
+        }
+        
+        if (flightNumber.length > 20) {
+            showToast('Số hiệu chuyến bay không được vượt quá 20 ký tự', 'error');
+            document.getElementById('flightNumber').focus();
+            return;
+        }
+        
+        const flightNumberRegex = /^[A-Z0-9]+$/i;
+        if (!flightNumberRegex.test(flightNumber)) {
+            showToast('Số hiệu chuyến bay chỉ được chứa chữ cái và số', 'error');
+            document.getElementById('flightNumber').focus();
+            return;
+        }
+        
+        // Airline validation
+        if (!airlineId || airlineId === '') {
+            showToast('Vui lòng chọn hãng hàng không', 'error');
+            document.getElementById('airlineId').focus();
+            return;
+        }
+        
+        const airlineIdNum = parseInt(airlineId);
+        if (isNaN(airlineIdNum) || airlineIdNum <= 0) {
+            showToast('Hãng hàng không không hợp lệ', 'error');
+            document.getElementById('airlineId').focus();
+            return;
+        }
+        
+        // Aircraft Type validation
+        if (!aircraftTypeId || aircraftTypeId === '') {
+            showToast('Vui lòng chọn loại máy bay', 'error');
+            document.getElementById('aircraftTypeId').focus();
+            return;
+        }
+        
+        const aircraftTypeIdNum = parseInt(aircraftTypeId);
+        if (isNaN(aircraftTypeIdNum) || aircraftTypeIdNum <= 0) {
+            showToast('Loại máy bay không hợp lệ', 'error');
+            document.getElementById('aircraftTypeId').focus();
+            return;
+        }
+        
+        // Airports validation
+        if (!departureAirportId || departureAirportId === '') {
+            showToast('Vui lòng chọn sân bay khởi hành', 'error');
+            document.getElementById('departureAirportId').focus();
+            return;
+        }
+        
+        const departureAirportIdNum = parseInt(departureAirportId);
+        if (isNaN(departureAirportIdNum) || departureAirportIdNum <= 0) {
+            showToast('Sân bay khởi hành không hợp lệ', 'error');
+            document.getElementById('departureAirportId').focus();
+            return;
+        }
+        
+        if (!arrivalAirportId || arrivalAirportId === '') {
+            showToast('Vui lòng chọn sân bay đến', 'error');
+            document.getElementById('arrivalAirportId').focus();
+            return;
+        }
+        
+        const arrivalAirportIdNum = parseInt(arrivalAirportId);
+        if (isNaN(arrivalAirportIdNum) || arrivalAirportIdNum <= 0) {
+            showToast('Sân bay đến không hợp lệ', 'error');
+            document.getElementById('arrivalAirportId').focus();
+            return;
+        }
+        
+        if (departureAirportId === arrivalAirportId) {
+            showToast('Sân bay khởi hành và sân bay đến không được trùng nhau', 'error');
+            document.getElementById('arrivalAirportId').focus();
+            return;
+        }
+        
+        // Time validation
+        if (!departureTime || departureTime === '') {
+            showToast('Vui lòng chọn thời gian khởi hành', 'error');
+            document.getElementById('departureTime').focus();
+            return;
+        }
+        
+        if (!arrivalTime || arrivalTime === '') {
+            showToast('Vui lòng chọn thời gian đến', 'error');
+            document.getElementById('arrivalTime').focus();
+            return;
+        }
+        
+        const depTime = new Date(departureTime);
+        const arrTime = new Date(arrivalTime);
+        
+        if (isNaN(depTime.getTime())) {
+            showToast('Thời gian khởi hành không hợp lệ', 'error');
+            document.getElementById('departureTime').focus();
+            return;
+        }
+        
+        if (isNaN(arrTime.getTime())) {
+            showToast('Thời gian đến không hợp lệ', 'error');
+            document.getElementById('arrivalTime').focus();
+            return;
+        }
+        
+        if (arrTime <= depTime) {
+            showToast('Thời gian đến phải sau thời gian khởi hành', 'error');
+            document.getElementById('arrivalTime').focus();
+            return;
+        }
+        
+        // Check minimum flight duration (at least 30 minutes)
+        const durationMinutes = (arrTime - depTime) / (1000 * 60);
+        if (durationMinutes < 30) {
+            showToast('Thời gian bay phải ít nhất 30 phút', 'error');
+            document.getElementById('arrivalTime').focus();
+            return;
+        }
+        
+        // Check maximum flight duration (reasonable limit: 24 hours)
+        if (durationMinutes > 1440) {
+            showToast('Thời gian bay không được vượt quá 24 giờ', 'error');
+            document.getElementById('arrivalTime').focus();
+            return;
+        }
+        
+        // Base Price validation
+        if (!basePrice || basePrice === '') {
+            showToast('Vui lòng nhập giá vé', 'error');
+            document.getElementById('basePrice').focus();
+            return;
+        }
+        
+        const basePriceNum = parseFloat(basePrice);
+        if (isNaN(basePriceNum)) {
+            showToast('Giá vé phải là một số hợp lệ', 'error');
+            document.getElementById('basePrice').focus();
+            return;
+        }
+        
+        if (basePriceNum <= 0) {
+            showToast('Giá vé phải lớn hơn 0', 'error');
+            document.getElementById('basePrice').focus();
+            return;
+        }
+        
+        if (basePriceNum < 10000) {
+            showToast('Giá vé phải ít nhất 10,000 VNĐ', 'error');
+            document.getElementById('basePrice').focus();
+            return;
+        }
+        
+        if (basePriceNum > 100000000) {
+            showToast('Giá vé quá lớn (tối đa 100,000,000 VNĐ)', 'error');
+            document.getElementById('basePrice').focus();
+            return;
+        }
+        
+        // Check decimal places
+        const decimalPlaces = (basePrice.split('.')[1] || []).length;
+        if (decimalPlaces > 2) {
+            showToast('Giá vé chỉ được có tối đa 2 chữ số thập phân', 'error');
+            document.getElementById('basePrice').focus();
+            return;
+        }
+        
+        // Gate validation (optional)
+        const gateEl = document.getElementById('gate');
+        if (gateEl && gateEl.value) {
+            const gate = gateEl.value.trim();
+            if (gate.length > 10) {
+                showToast('Cổng không được vượt quá 10 ký tự', 'error');
+                gateEl.focus();
+                return;
+            }
+        }
+        
         try {
             const payload = collectFlightPayload();
             if (flight?.flightId) {
@@ -309,10 +577,12 @@ async function openFlightModal(title, flightId) {
                 await api.createFlight(payload);
                 showToast('Tạo chuyến bay thành công!', 'success');
             }
-            closeModal();
+            closeModal('flightModal');
             await loadFlights();
         } catch (err) {
-            showToast('Lưu chuyến bay thất bại: ' + (err?.message || ''), 'error');
+            const errorMsg = err?.message || 'Lỗi không xác định';
+            showToast('Lưu chuyến bay thất bại: ' + errorMsg, 'error');
+            // Don't close modal on error - keep form values
         }
     };
 

@@ -1,0 +1,1501 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flight Booking Admin Panel</title>
+    <link rel="stylesheet" href="css/admin.css">
+    <link rel="stylesheet" href="css/chat-styles.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+</head>
+<body>
+    <div class="admin-container">
+        <!-- Sidebar -->
+        <nav class="sidebar">
+            <div class="sidebar-header">
+                <h2><i class="fas fa-plane"></i> Flight Admin</h2>
+            </div>
+            <ul class="sidebar-menu">
+                <li class="menu-item active" data-page="dashboard">
+                    <i class="fas fa-chart-pie"></i>
+                    <span>Tổng quan</span>
+                </li>
+                <li class="menu-item" data-page="bookings">
+                    <i class="fas fa-ticket-alt"></i>
+                    <span>Quản lý đặt vé</span>
+                </li>
+                <li class="menu-item" data-page="users">
+                    <i class="fas fa-users"></i>
+                    <span>Quản lý khách hàng</span>
+                </li>
+                <li class="menu-item" data-page="payments">
+                    <i class="fas fa-credit-card"></i>
+                    <span>Quản lý thanh toán</span>
+                </li>
+                <li class="menu-item" data-page="flights">
+                    <i class="fas fa-plane"></i>
+                    <span>Quản lý chuyến bay</span>
+                </li>
+                <li class="menu-item" data-page="airline-revenue">
+                    <i class="fas fa-coins"></i>
+                    <span>Doanh thu hãng bay</span>
+                </li>
+                <li class="menu-item" data-page="customer-support">
+                    <i class="fas fa-headset"></i>
+                    <span>Hỗ trợ khách hàng</span>
+                </li>
+                <li class="menu-item" data-page="notifications">
+                    <i class="fas fa-bell"></i>
+                    <span>Quản lý thông báo</span>
+                    <span id="notifications-badge" class="notification-badge" style="display:none;">0</span>
+                </li>
+                <li class="menu-item" data-page="reports">
+                    <i class="fas fa-chart-bar"></i>
+                    <span>Báo cáo & Phân tích</span>
+                </li>
+            </ul>
+            <div style="margin-top:auto; padding: 12px;">
+                <button class="btn btn-danger" onclick="logout()" title="Đăng xuất" style="width:100%">
+                    <i class="fas fa-sign-out-alt"></i> Đăng xuất
+                </button>
+            </div>
+        </nav>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Header -->
+            <header class="header">
+                <div class="header-left">
+                    <button class="sidebar-toggle">
+                        <i class="fas fa-bars"></i>
+                    </button>
+                    <h1 id="page-title">Tổng quan</h1>
+                </div>
+                <div class="header-right">
+                    <label class="toggle-switch" title="Tự động làm mới dữ liệu">
+                        <input type="checkbox" id="auto-refresh-toggle" onchange="toggleAutoRefresh()">
+                        <span class="slider"></span>
+                        <span style="margin-left: 8px; font-size: 14px;">Auto-refresh</span>
+                    </label>
+                </div>
+            </header>
+            
+            <!-- Toast Notifications Container -->
+            <div id="toast-container" class="toast-container"></div>
+
+            <!-- Dashboard Page -->
+            <div id="dashboard-page" class="page active">
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-icon">
+                            <i class="fas fa-ticket-alt"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3 id="total-bookings">0</h3>
+                            <p>Tổng đặt vé</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">
+                            <i class="fas fa-users"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3 id="total-users">0</h3>
+                            <p>Tổng khách hàng</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">
+                            <i class="fas fa-credit-card"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3 id="total-revenue">0 VNĐ</h3>
+                            <p>Doanh thu</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">
+                            <i class="fas fa-chart-line"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3 id="success-rate">0%</h3>
+                            <p>Tỷ lệ thành công</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Revenue Time Filter -->
+                <div class="revenue-filter" style="margin: 20px 0; display: flex; gap: 10px; align-items: center;">
+                    <label style="font-weight: bold;">Xem theo:</label>
+                    <select id="revenue-time-filter" onchange="changeRevenueTimeFilter()" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 5px; font-size: 14px;">
+                        <option value="day">Ngày</option>
+                        <option value="week">Tuần</option>
+                        <option value="month" selected>Tháng</option>
+                        <option value="year">Năm</option>
+                    </select>
+                    <input type="date" id="revenue-start-date" style="padding: 8px; border: 1px solid #ddd; border-radius: 5px;">
+                    <span>đến</span>
+                    <input type="date" id="revenue-end-date" style="padding: 8px; border: 1px solid #ddd; border-radius: 5px;">
+                    <button class="btn btn-primary" onclick="applyRevenueFilter()" style="padding: 8px 16px;">
+                        <i class="fas fa-filter"></i> Áp dụng
+                    </button>
+                </div>
+
+                <div class="charts-grid">
+                    <div class="chart-card">
+                        <h3 id="revenue-chart-title">Doanh thu theo tháng</h3>
+                        <canvas id="revenueChart"></canvas>
+                    </div>
+                    <div class="chart-card">
+                        <h3>Phương thức thanh toán</h3>
+                        <canvas id="paymentMethodChart"></canvas>
+                    </div>
+                    <div class="chart-card">
+                        <h3>Trạng thái đặt vé</h3>
+                        <canvas id="bookingStatusChart"></canvas>
+                    </div>
+                    <div class="chart-card">
+                        <h3>Khách hàng mới theo tháng</h3>
+                        <canvas id="newUsersChart"></canvas>
+                    </div>
+                    <div class="chart-card">
+                        <h3>Tỷ lệ hủy vé</h3>
+                        <canvas id="cancellationRateChart"></canvas>
+                    </div>
+                    <div class="chart-card">
+                        <h3>Top hãng hàng không</h3>
+                        <canvas id="airlineChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Bookings Page -->
+            <div id="bookings-page" class="page">
+                <div class="page-header">
+                    <h2>Quản lý đặt vé</h2>
+                    <div class="page-actions">
+                        <button class="btn btn-success" onclick="showCreateBookingModal()">
+                            <i class="fas fa-plus"></i> Thêm mới
+                        </button>
+                        <button class="btn btn-primary" onclick="refreshBookings()">
+                            <i class="fas fa-sync-alt"></i> Làm mới
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Stats Grid -->
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-icon" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+                            <i class="fas fa-ticket-alt"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3 id="bookings-total-bookings">0</h3>
+                            <p>Tổng đặt vé</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);">
+                            <i class="fas fa-check-circle"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3 id="bookings-confirmed">0</h3>
+                            <p>Đã xác nhận</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);">
+                            <i class="fas fa-money-bill-wave"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3 id="bookings-total-revenue">0 ₫</h3>
+                            <p>Doanh thu</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon" style="background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);">
+                            <i class="fas fa-chart-line"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3 id="bookings-success-rate">0%</h3>
+                            <p>Tỷ lệ thành công</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Search, Filter, Sort Controls -->
+                <div class="table-controls">
+                    <div class="search-box">
+                        <i class="fas fa-search"></i>
+                        <input type="text" id="bookings-search" placeholder="Tìm kiếm theo mã vé, tên khách hàng..." onkeyup="handleBookingsSearch(event)">
+                    </div>
+                    <div class="filter-box">
+                        <select id="bookings-filter-status" onchange="filterBookings()">
+                            <option value="">Tất cả trạng thái</option>
+                            <option value="PENDING">Chờ xử lý</option>
+                            <option value="CONFIRMED">Đã xác nhận</option>
+                            <option value="CANCELLED">Đã hủy</option>
+                        </select>
+                    </div>
+                    <div class="sort-box">
+                        <select id="bookings-sort" onchange="sortBookings()">
+                            <option value="bookingDate-desc">Ngày đặt (mới nhất)</option>
+                            <option value="bookingDate-asc">Ngày đặt (cũ nhất)</option>
+                            <option value="totalAmount-desc">Tổng tiền (cao → thấp)</option>
+                            <option value="totalAmount-asc">Tổng tiền (thấp → cao)</option>
+                            <option value="bookingId-asc">ID (tăng dần)</option>
+                            <option value="bookingId-desc">ID (giảm dần)</option>
+                        </select>
+                    </div>
+                    <div class="per-page-box">
+                        <label>Số bản ghi:</label>
+                        <select id="bookings-per-page" onchange="changeBookingsPerPage()">
+                            <option value="10">10</option>
+                            <option value="25" selected>25</option>
+                            <option value="50">50</option>
+                            <option value="100">100</option>
+                        </select>
+                    </div>
+                    <div class="date-range-picker">
+                        <label>Từ ngày:</label>
+                        <input type="date" id="bookings-start-date" onchange="filterBookings()">
+                        <label>Đến ngày:</label>
+                        <input type="date" id="bookings-end-date" onchange="filterBookings()">
+                    </div>
+                    <div class="price-range-picker">
+                        <label>Giá từ:</label>
+                        <input type="number" id="bookings-min-price" placeholder="0" step="1000" onchange="filterBookings()">
+                        <label>Đến:</label>
+                        <input type="number" id="bookings-max-price" placeholder="999999999" step="1000" onchange="filterBookings()">
+                    </div>
+                </div>
+
+                <!-- Bulk Actions Bar -->
+                <div id="bookings-bulk-actions" class="bulk-actions-bar hidden" style="margin-bottom: 15px;">
+                    <span><strong><span class="selected-count">0</span> đã chọn</strong></span>
+                    <button class="btn btn-danger btn-sm" onclick="bulkDeleteBookings()">
+                        <i class="fas fa-trash"></i> Xóa
+                    </button>
+                    <button class="btn btn-primary btn-sm" onclick="bulkUpdateBookingStatus('CONFIRMED')">
+                        <i class="fas fa-check"></i> Xác nhận
+                    </button>
+                    <button class="btn btn-warning btn-sm" onclick="bulkUpdateBookingStatus('CANCELLED')">
+                        <i class="fas fa-times"></i> Hủy
+                    </button>
+                </div>
+
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th style="width: 50px;">
+                                    <input type="checkbox" id="bookings-select-all" onchange="toggleSelectAllBookings()" title="Chọn tất cả">
+                                </th>
+                                <th>Mã đặt vé</th>
+                                <th>Tên khách hàng</th>
+                                <th>Chuyến bay</th>
+                                <th>Tổng tiền</th>
+                                <th>Trạng thái</th>
+                                <th>Ngày đặt</th>
+                                <th>Thao tác</th>
+                            </tr>
+                        </thead>
+                        <tbody id="bookings-table-body">
+                            <!-- Data will be loaded here -->
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Pagination -->
+                <div class="pagination" id="bookings-pagination">
+                    <button class="btn btn-outline" onclick="changeBookingsPage(1)" id="bookings-page-first">
+                        <i class="fas fa-angle-double-left"></i>
+                    </button>
+                    <button class="btn btn-outline" onclick="changeBookingsPage('prev')" id="bookings-page-prev">
+                        <i class="fas fa-angle-left"></i>
+                    </button>
+                    <span class="page-info" id="bookings-page-info">Trang 1 / 1</span>
+                    <button class="btn btn-outline" onclick="changeBookingsPage('next')" id="bookings-page-next">
+                        <i class="fas fa-angle-right"></i>
+                    </button>
+                    <button class="btn btn-outline" onclick="changeBookingsPage(999)" id="bookings-page-last">
+                        <i class="fas fa-angle-double-right"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Users Page -->
+            <div id="users-page" class="page">
+                <div class="page-header">
+                    <h2>Quản lý khách hàng</h2>
+                    <div class="page-actions">
+                        <button class="btn btn-success" onclick="showCreateUserModal()">
+                            <i class="fas fa-plus"></i> Thêm mới
+                        </button>
+                        <button class="btn btn-primary" onclick="refreshUsers()">
+                            <i class="fas fa-sync-alt"></i> Làm mới
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Stats Grid -->
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-icon" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+                            <i class="fas fa-users"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3 id="users-total-users">0</h3>
+                            <p>Tổng khách hàng</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);">
+                            <i class="fas fa-user-check"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3 id="users-active-users">0</h3>
+                            <p>Đang hoạt động</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);">
+                            <i class="fas fa-user-plus"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3 id="users-new-today">0</h3>
+                            <p>Mới hôm nay</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon" style="background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);">
+                            <i class="fas fa-ticket-alt"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3 id="users-total-bookings">0</h3>
+                            <p>Tổng đặt vé</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Search, Filter, Sort Controls -->
+                <div class="table-controls">
+                    <div class="search-box">
+                        <i class="fas fa-search"></i>
+                        <input type="text" id="users-search" placeholder="Tìm kiếm theo tên, email, số điện thoại..." onkeyup="handleUsersSearch(event)">
+                    </div>
+                    <div class="sort-box">
+                        <select id="users-sort" onchange="sortUsers()">
+                            <option value="createdAt-desc">Ngày tạo (mới nhất)</option>
+                            <option value="createdAt-asc">Ngày tạo (cũ nhất)</option>
+                            <option value="username-asc">Tên đăng nhập (A-Z)</option>
+                            <option value="username-desc">Tên đăng nhập (Z-A)</option>
+                            <option value="email-asc">Email (A-Z)</option>
+                            <option value="email-desc">Email (Z-A)</option>
+                            <option value="userId-asc">ID (tăng dần)</option>
+                            <option value="userId-desc">ID (giảm dần)</option>
+                        </select>
+                    </div>
+                    <div class="per-page-box">
+                        <label>Số bản ghi:</label>
+                        <select id="users-per-page" onchange="changeUsersPerPage()">
+                            <option value="10">10</option>
+                            <option value="25" selected>25</option>
+                            <option value="50">50</option>
+                            <option value="100">100</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Bulk Actions Bar -->
+                <div id="users-bulk-actions" class="bulk-actions-bar hidden" style="margin-bottom: 15px;">
+                    <span><strong><span class="selected-count">0</span> đã chọn</strong></span>
+                    <button class="btn btn-danger btn-sm" onclick="bulkDeleteUsers()">
+                        <i class="fas fa-trash"></i> Xóa
+                    </button>
+                </div>
+
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th style="width: 50px;">
+                                    <input type="checkbox" id="users-select-all" onchange="toggleSelectAllUsers()" title="Chọn tất cả">
+                                </th>
+                                <th>ID</th>
+                                <th>Tên đăng nhập</th>
+                                <th>Email</th>
+                                <th>Họ tên</th>
+                                <th>Số điện thoại</th>
+                                <th>Trạng thái</th>
+                                <th>Tổng đặt vé</th>
+                                <th>Thao tác</th>
+                            </tr>
+                        </thead>
+                        <tbody id="users-table-body">
+                            <!-- Data will be loaded here -->
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Pagination -->
+                <div class="pagination" id="users-pagination">
+                    <button class="btn btn-outline" onclick="changeUsersPage(1)" id="users-page-first">
+                        <i class="fas fa-angle-double-left"></i>
+                    </button>
+                    <button class="btn btn-outline" onclick="changeUsersPage('prev')" id="users-page-prev">
+                        <i class="fas fa-angle-left"></i>
+                    </button>
+                    <span class="page-info" id="users-page-info">Trang 1 / 1</span>
+                    <button class="btn btn-outline" onclick="changeUsersPage('next')" id="users-page-next">
+                        <i class="fas fa-angle-right"></i>
+                    </button>
+                    <button class="btn btn-outline" onclick="changeUsersPage(999)" id="users-page-last">
+                        <i class="fas fa-angle-double-right"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Payments Page -->
+            <div id="payments-page" class="page">
+                <div class="page-header">
+                    <h2>Quản lý thanh toán</h2>
+                    <div class="page-actions">
+                        <button class="btn btn-success" onclick="showCreatePaymentModal()">
+                            <i class="fas fa-plus"></i> Thêm mới
+                        </button>
+                        <button class="btn btn-primary" onclick="refreshPayments()">
+                            <i class="fas fa-sync-alt"></i> Làm mới
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Stats Grid -->
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-icon" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+                            <i class="fas fa-credit-card"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3 id="payments-total">0</h3>
+                            <p>Tổng giao dịch</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);">
+                            <i class="fas fa-check-circle"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3 id="payments-success">0</h3>
+                            <p>Thành công</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);">
+                            <i class="fas fa-money-bill-wave"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3 id="payments-total-revenue">0 ₫</h3>
+                            <p>Tổng doanh thu</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon" style="background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);">
+                            <i class="fas fa-chart-pie"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3 id="payments-success-rate">0%</h3>
+                            <p>Tỷ lệ thành công</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Search, Filter, Sort Controls -->
+                <div class="table-controls">
+                    <div class="search-box">
+                        <i class="fas fa-search"></i>
+                        <input type="text" id="payments-search" placeholder="Tìm kiếm theo mã giao dịch..." onkeyup="handlePaymentsSearch(event)">
+                    </div>
+                    <div class="filter-box">
+                        <select id="payments-filter-method" onchange="filterPayments()">
+                            <option value="">Tất cả phương thức</option>
+                            <option value="VNPAY">VNPay</option>
+                            <option value="MOMO">MoMo</option>
+                            <option value="ZALOPAY">ZaloPay</option>
+                            <option value="CARD">Thẻ tín dụng</option>
+                        </select>
+                    </div>
+                    <div class="filter-box">
+                        <select id="payments-filter-status" onchange="filterPayments()">
+                            <option value="">Tất cả trạng thái</option>
+                            <option value="PENDING">Chờ xử lý</option>
+                            <option value="SUCCESS">Thành công</option>
+                            <option value="FAILED">Thất bại</option>
+                            <option value="REFUNDED">Đã hoàn tiền</option>
+                        </select>
+                    </div>
+                    <div class="sort-box">
+                        <select id="payments-sort" onchange="sortPayments()">
+                            <option value="createdAt-desc">Ngày tạo (mới nhất)</option>
+                            <option value="createdAt-asc">Ngày tạo (cũ nhất)</option>
+                            <option value="amount-desc">Số tiền (cao → thấp)</option>
+                            <option value="amount-asc">Số tiền (thấp → cao)</option>
+                            <option value="paymentId-asc">ID (tăng dần)</option>
+                            <option value="paymentId-desc">ID (giảm dần)</option>
+                        </select>
+                    </div>
+                    <div class="per-page-box">
+                        <label>Số bản ghi:</label>
+                        <select id="payments-per-page" onchange="changePaymentsPerPage()">
+                            <option value="10">10</option>
+                            <option value="25" selected>25</option>
+                            <option value="50">50</option>
+                            <option value="100">100</option>
+                        </select>
+                    </div>
+                    <div class="date-range-picker">
+                        <label>Từ ngày:</label>
+                        <input type="date" id="payments-start-date" onchange="filterPayments()">
+                        <label>Đến ngày:</label>
+                        <input type="date" id="payments-end-date" onchange="filterPayments()">
+                    </div>
+                    <div class="price-range-picker">
+                        <label>Số tiền từ:</label>
+                        <input type="number" id="payments-min-amount" placeholder="0" step="1000" onchange="filterPayments()">
+                        <label>Đến:</label>
+                        <input type="number" id="payments-max-amount" placeholder="999999999" step="1000" onchange="filterPayments()">
+                    </div>
+                </div>
+
+                <!-- Bulk Actions Bar -->
+                <div id="payments-bulk-actions" class="bulk-actions-bar hidden" style="margin-bottom: 15px;">
+                    <span><strong><span class="selected-count">0</span> đã chọn</strong></span>
+                    <button class="btn btn-danger btn-sm" onclick="bulkDeletePayments()">
+                        <i class="fas fa-trash"></i> Xóa
+                    </button>
+                </div>
+
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th style="width: 50px;">
+                                    <input type="checkbox" id="payments-select-all" onchange="toggleSelectAllPayments()" title="Chọn tất cả">
+                                </th>
+                                <th>ID</th>
+                                <th>Mã giao dịch</th>
+                                <th>Phương thức</th>
+                                <th>Số tiền</th>
+                                <th>Trạng thái</th>
+                                <th>Ngày tạo</th>
+                                <th>Thao tác</th>
+                            </tr>
+                        </thead>
+                        <tbody id="payments-table-body">
+                            <!-- Data will be loaded here -->
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Pagination -->
+                <div class="pagination" id="payments-pagination">
+                    <button class="btn btn-outline" onclick="changePaymentsPage(1)" id="payments-page-first">
+                        <i class="fas fa-angle-double-left"></i>
+                    </button>
+                    <button class="btn btn-outline" onclick="changePaymentsPage('prev')" id="payments-page-prev">
+                        <i class="fas fa-angle-left"></i>
+                    </button>
+                    <span class="page-info" id="payments-page-info">Trang 1 / 1</span>
+                    <button class="btn btn-outline" onclick="changePaymentsPage('next')" id="payments-page-next">
+                        <i class="fas fa-angle-right"></i>
+                    </button>
+                    <button class="btn btn-outline" onclick="changePaymentsPage(999)" id="payments-page-last">
+                        <i class="fas fa-angle-double-right"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Flights Page -->
+            <div id="flights-page" class="page">
+                <div class="page-header">
+                    <h2>Quản lý chuyến bay</h2>
+                    <div class="page-actions">
+                        <button class="btn btn-success" onclick="showAddFlightModal()">➕ Add Flight</button>
+                        <button class="btn btn-primary" onclick="loadFlights()">🔄 Refresh</button>
+                    </div>
+                </div>
+
+                <!-- Stats Grid -->
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-icon" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+                            <i class="fas fa-plane"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3 id="flights-total">0</h3>
+                            <p>Tổng chuyến bay</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);">
+                            <i class="fas fa-check-circle"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3 id="flights-scheduled">0</h3>
+                            <p>Đã lên lịch</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);">
+                            <i class="fas fa-clock"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3 id="flights-delayed">0</h3>
+                            <p>Bị hoãn</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon" style="background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);">
+                            <i class="fas fa-times-circle"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3 id="flights-cancelled">0</h3>
+                            <p>Đã hủy</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon" style="background: linear-gradient(135deg, #757575 0%, #9e9e9e 100%);">
+                            <i class="fas fa-check-circle"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3 id="flights-completed">0</h3>
+                            <p>Đã hoàn thành</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="filters-container">
+                    <input type="text" id="flights-search" placeholder="Tìm kiếm theo số hiệu, hãng, sân bay..." class="search-input" onkeyup="handleFlightsSearch(event)">
+                    <select id="flights-status-filter" class="filter-select" onchange="filterFlights()">
+                        <option value="">Tất cả trạng thái</option>
+                        <option value="SCHEDULED">Scheduled</option>
+                        <option value="COMPLETED">Completed</option>
+                        <option value="DELAYED">Delayed</option>
+                        <option value="CANCELLED">Cancelled</option>
+                    </select>
+                    <select id="flights-sort" class="filter-select" onchange="sortFlights()">
+                        <option value="flightId-asc" selected>ID (tăng dần)</option>
+                        <option value="flightId-desc">ID (giảm dần)</option>
+                        <option value="departureTime-desc">Ngày giờ (mới nhất)</option>
+                        <option value="departureTime-asc">Ngày giờ (cũ nhất)</option>
+                        <option value="basePrice-desc">Giá (cao → thấp)</option>
+                        <option value="basePrice-asc">Giá (thấp → cao)</option>
+                        <option value="airlineName-asc">Hãng (A-Z)</option>
+                        <option value="airlineName-desc">Hãng (Z-A)</option>
+                        <option value="flightNumber-asc">Số hiệu (A-Z)</option>
+                        <option value="flightNumber-desc">Số hiệu (Z-A)</option>
+                    </select>
+                    <div class="per-page-box" style="margin-left:auto">
+                        <label>Số bản ghi:</label>
+                        <select id="flights-per-page" onchange="changeFlightsPerPage()">
+                            <option value="10">10</option>
+                            <option value="25" selected>25</option>
+                            <option value="50">50</option>
+                            <option value="100">100</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="table-container">
+                    <table class="data-table" id="flightsTable">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Flight Number</th>
+                                <th>Route</th>
+                                <th>Date</th>
+                                <th>Time</th>
+                                <th>Airline</th>
+                                <th>Price</th>
+                                <th>Status</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="flightsTableBody"></tbody>
+                    </table>
+                </div>
+
+                
+
+                <div class="pagination" id="flights-pagination">
+                    <button class="btn btn-outline" onclick="changeFlightsPage(1)" id="flights-page-first">
+                        <i class="fas fa-angle-double-left"></i>
+                    </button>
+                    <button class="btn btn-outline" onclick="changeFlightsPage('prev')" id="flights-page-prev">
+                        <i class="fas fa-angle-left"></i>
+                    </button>
+                    <span class="page-info" id="flights-page-info">Trang 1 / 1</span>
+                    <button class="btn btn-outline" onclick="changeFlightsPage('next')" id="flights-page-next">
+                        <i class="fas fa-angle-right"></i>
+                    </button>
+                    <button class="btn btn-outline" onclick="changeFlightsPage(999)" id="flights-page-last">
+                        <i class="fas fa-angle-double-right"></i>
+                    </button>
+                </div>
+                <div id="loadingIndicator" class="loading" style="display:none">
+                    <div class="spinner"></div>
+                    <p>Đang tải dữ liệu...</p>
+                </div>
+            </div>
+
+            <!-- Airline Revenue Page -->
+            <div id="airline-revenue-page" class="page">
+                <div class="page-header">
+                    <h2>Doanh thu theo hãng hàng không</h2>
+                    <div class="page-actions">
+                        <button class="btn btn-primary" onclick="loadAirlineRevenue()">
+                            <i class="fas fa-sync-alt"></i> Làm mới
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Stats Grid -->
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-icon" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+                            <i class="fas fa-building"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3 id="airline-revenue-total-airlines">0</h3>
+                            <p>Tổng hãng bay</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);">
+                            <i class="fas fa-coins"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3 id="airline-revenue-total-revenue">0 ₫</h3>
+                            <p>Tổng doanh thu</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);">
+                            <i class="fas fa-ticket-alt"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3 id="airline-revenue-total-bookings">0</h3>
+                            <p>Tổng đặt vé</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon" style="background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);">
+                            <i class="fas fa-chart-bar"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3 id="airline-revenue-avg-revenue">0 ₫</h3>
+                            <p>Doanh thu TB/hãng</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Search, Sort, Per-page Controls -->
+                <div class="table-controls">
+                    <div class="search-box">
+                        <i class="fas fa-search"></i>
+                        <input type="text" id="airline-revenue-search" placeholder="Tìm theo hãng..." onkeyup="handleAirlineRevenueSearch(event)">
+                    </div>
+                    <div class="sort-box">
+                        <select id="airline-revenue-sort" onchange="sortAirlineRevenue()">
+                            <option value="revenue-desc">Doanh thu (cao → thấp)</option>
+                            <option value="revenue-asc">Doanh thu (thấp → cao)</option>
+                            <option value="paidBookings-desc">Đã thanh toán (nhiều → ít)</option>
+                            <option value="paidBookings-asc">Đã thanh toán (ít → nhiều)</option>
+                            <option value="totalBookings-desc">Tổng đặt vé (nhiều → ít)</option>
+                            <option value="totalBookings-asc">Tổng đặt vé (ít → nhiều)</option>
+                            <option value="airlineName-asc">Hãng (A-Z)</option>
+                            <option value="airlineName-desc">Hãng (Z-A)</option>
+                        </select>
+                    </div>
+                    <div class="per-page-box">
+                        <label>Số bản ghi:</label>
+                        <select id="airline-revenue-per-page" onchange="changeAirlineRevenuePerPage()">
+                            <option value="10">10</option>
+                            <option value="25" selected>25</option>
+                            <option value="50">50</option>
+                            <option value="100">100</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Hãng hàng không</th>
+                                <th>Tổng đặt vé</th>
+                                <th>Đã thanh toán</th>
+                                <th>Doanh thu</th>
+                            </tr>
+                        </thead>
+                        <tbody id="airline-revenue-table-body"></tbody>
+                    </table>
+                </div>
+
+                <!-- Pagination -->
+                <div class="pagination" id="airline-revenue-pagination">
+                    <button class="btn btn-outline" onclick="changeAirlineRevenuePage(1)" id="airline-revenue-page-first">
+                        <i class="fas fa-angle-double-left"></i>
+                    </button>
+                    <button class="btn btn-outline" onclick="changeAirlineRevenuePage('prev')" id="airline-revenue-page-prev">
+                        <i class="fas fa-angle-left"></i>
+                    </button>
+                    <span class="page-info" id="airline-revenue-page-info">Trang 1 / 1</span>
+                    <button class="btn btn-outline" onclick="changeAirlineRevenuePage('next')" id="airline-revenue-page-next">
+                        <i class="fas fa-angle-right"></i>
+                    </button>
+                    <button class="btn btn-outline" onclick="changeAirlineRevenuePage(999)" id="airline-revenue-page-last">
+                        <i class="fas fa-angle-double-right"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Customer Support Page -->
+            <div id="customer-support-page" class="page">
+                <div class="page-header">
+                    <h2>Hỗ trợ khách hàng</h2>
+                    <div class="page-actions">
+                        <button class="btn btn-primary" onclick="refreshChatConversations()">
+                            <i class="fas fa-sync-alt"></i> Làm mới
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Stats Grid -->
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-icon" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+                            <i class="fas fa-comments"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3 id="support-total-conversations">0</h3>
+                            <p>Tổng cuộc trò chuyện</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);">
+                            <i class="fas fa-envelope"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3 id="support-unread-messages">0</h3>
+                            <p>Tin nhắn chưa đọc</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);">
+                            <i class="fas fa-clock"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3 id="support-pending-replies">0</h3>
+                            <p>Đang chờ phản hồi</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon" style="background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);">
+                            <i class="fas fa-check-circle"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3 id="support-response-rate">0%</h3>
+                            <p>Tỷ lệ phản hồi</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="modern-chat-container">
+                    <!-- Conversations Sidebar -->
+                    <div class="conversations-sidebar">
+                        <div class="conversations-header">
+                            <h3><i class="fas fa-headset"></i> Cuộc trò chuyện</h3>
+                            <div class="search-wrapper">
+                                <i class="fas fa-search"></i>
+                                <input type="text" id="conversations-search" placeholder="Tìm khách hàng..." onkeyup="searchConversations()">
+                            </div>
+                        </div>
+                        <div id="conversations-container" class="conversations-items">
+                            <!-- Conversations will be loaded here -->
+                        </div>
+                    </div>
+
+                    <!-- Chat Window -->
+                    <div class="modern-chat-window">
+                        <div id="no-conversation-selected" class="empty-chat-state">
+                            <div class="empty-chat-icon">
+                                <i class="fas fa-comments"></i>
+                            </div>
+                            <h3>Chọn cuộc trò chuyện</h3>
+                            <p>Chọn một cuộc trò chuyện từ danh sách bên trái để bắt đầu trò chuyện với khách hàng</p>
+                        </div>
+
+                        <div id="chat-active" class="active-chat-container" style="display: none;">
+                            <!-- Chat Header -->
+                            <div class="modern-chat-header">
+                                <div class="user-avatar">
+                                    <i class="fas fa-user"></i>
+                                </div>
+                                <div class="chat-user-info">
+                                    <h3 id="chat-user-name">Khách hàng</h3>
+                                    <span id="chat-user-email" class="user-email"></span>
+                                    <span id="chat-status-badge" class="status-badge online">Đang online</span>
+                                </div>
+                                <div class="chat-header-actions">
+                                    <button class="icon-btn" onclick="markAllAsRead()" title="Đánh dấu đã đọc">
+                                        <i class="fas fa-check-double"></i>
+                                    </button>
+                                    <button class="icon-btn" onclick="refreshMessages()" title="Làm mới">
+                                        <i class="fas fa-sync-alt"></i>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Messages Container -->
+                            <div id="messages-container" class="modern-messages-container">
+                                <!-- Messages will be loaded here -->
+                            </div>
+
+                            <!-- Input Area -->
+                            <div class="modern-chat-input">
+                                <div class="input-wrapper">
+                                    <textarea id="message-input" placeholder="Nhập tin nhắn..." rows="1"></textarea>
+                                    <button class="send-btn" onclick="sendAdminMessage()" title="Gửi tin nhắn">
+                                        <i class="fas fa-paper-plane"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Notifications Page -->
+            <div id="notifications-page" class="page">
+                <div class="page-header">
+                    <h2>Quản lý thông báo</h2>
+                    <div class="page-actions">
+                        <button class="btn btn-primary" onclick="refreshNotifications()">
+                            <i class="fas fa-sync-alt"></i> Làm mới
+                        </button>
+                        <button class="btn btn-success" onclick="markAllNotificationsAsRead()">
+                            <i class="fas fa-check-double"></i> Đánh dấu tất cả đã đọc
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Stats Grid -->
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-icon" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+                            <i class="fas fa-bell"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3 id="notifications-total">0</h3>
+                            <p>Tổng thông báo</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);">
+                            <i class="fas fa-envelope-open"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3 id="notifications-unread">0</h3>
+                            <p>Chưa đọc</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);">
+                            <i class="fas fa-ticket-alt"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3 id="notifications-booking">0</h3>
+                            <p>Thông báo đặt vé</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon" style="background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);">
+                            <i class="fas fa-plane"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3 id="notifications-flight">0</h3>
+                            <p>Thông báo chuyến bay</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Search, Filter, Sort Controls -->
+                <div class="table-controls">
+                    <div class="search-box">
+                        <i class="fas fa-search"></i>
+                        <input type="text" id="notifications-search" placeholder="Tìm kiếm theo tiêu đề, nội dung..." onkeyup="handleNotificationsSearch(event)">
+                    </div>
+                    <div class="filter-box">
+                        <select id="notifications-filter-type" onchange="filterNotifications()">
+                            <option value="">Tất cả loại</option>
+                            <option value="BOOKING">Đặt vé</option>
+                            <option value="FLIGHT_UPDATE">Cập nhật chuyến bay</option>
+                            <option value="PAYMENT">Thanh toán</option>
+                            <option value="REMINDER">Nhắc nhở</option>
+                        </select>
+                    </div>
+                    <div class="filter-box">
+                        <select id="notifications-filter-status" onchange="filterNotifications()">
+                            <option value="">Tất cả trạng thái</option>
+                            <option value="UNREAD">Chưa đọc</option>
+                            <option value="READ">Đã đọc</option>
+                        </select>
+                    </div>
+                    <div class="sort-box">
+                        <select id="notifications-sort" onchange="sortNotifications()">
+                            <option value="createdAt-desc">Ngày tạo (mới nhất)</option>
+                            <option value="createdAt-asc">Ngày tạo (cũ nhất)</option>
+                            <option value="status-asc">Trạng thái (Chưa đọc trước)</option>
+                            <option value="status-desc">Trạng thái (Đã đọc trước)</option>
+                        </select>
+                    </div>
+                    <div class="per-page-box">
+                        <label>Số bản ghi:</label>
+                        <select id="notifications-per-page" onchange="changeNotificationsPerPage()">
+                            <option value="25" selected>25</option>
+                            <option value="50">50</option>
+                            <option value="100">100</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th><input type="checkbox" id="notifications-select-all" onchange="toggleSelectAllNotifications()"></th>
+                                <th>Tiêu đề</th>
+                                <th>Nội dung</th>
+                                <th>Loại</th>
+                                <th>Trạng thái</th>
+                                <th>Khách hàng</th>
+                                <th>Ngày tạo</th>
+                                <th>Thao tác</th>
+                            </tr>
+                        </thead>
+                        <tbody id="notifications-table-body">
+                            <!-- Data will be loaded here -->
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Pagination -->
+                <div class="pagination" id="notifications-pagination">
+                    <button class="btn btn-outline" onclick="changeNotificationsPage(1)" id="notifications-page-first">
+                        <i class="fas fa-angle-double-left"></i>
+                    </button>
+                    <button class="btn btn-outline" onclick="changeNotificationsPage('prev')" id="notifications-page-prev">
+                        <i class="fas fa-angle-left"></i>
+                    </button>
+                    <span class="page-info" id="notifications-page-info">Trang 1 / 1</span>
+                    <button class="btn btn-outline" onclick="changeNotificationsPage('next')" id="notifications-page-next">
+                        <i class="fas fa-angle-right"></i>
+                    </button>
+                    <button class="btn btn-outline" onclick="changeNotificationsPage(999)" id="notifications-page-last">
+                        <i class="fas fa-angle-double-right"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Reports Page -->
+            <div id="reports-page" class="page">
+                <div class="page-header">
+                    <h2>Báo cáo & Phân tích</h2>
+                    <div class="page-actions">
+                        <button class="btn btn-success" onclick="exportReport()">
+                            <i class="fas fa-file-excel"></i> Xuất Excel
+                        </button>
+                        <button class="btn btn-primary" onclick="refreshReports()">
+                            <i class="fas fa-sync-alt"></i> Làm mới
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Time Period Filter -->
+                <div class="revenue-filter" style="margin: 20px 0; display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                    <label style="font-weight: bold;">Kỳ báo cáo:</label>
+                    <select id="report-period" onchange="changeReportPeriod()" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 5px; font-size: 14px;">
+                        <option value="today">Hôm nay</option>
+                        <option value="week">Tuần này</option>
+                        <option value="month" selected>Tháng này</option>
+                        <option value="quarter">Quý này</option>
+                        <option value="year">Năm này</option>
+                        <option value="custom">Tùy chọn</option>
+                    </select>
+                    <input type="date" id="report-start-date" style="padding: 8px; border: 1px solid #ddd; border-radius: 5px; display:none;">
+                    <span id="report-date-separator" style="display:none;">đến</span>
+                    <input type="date" id="report-end-date" style="padding: 8px; border: 1px solid #ddd; border-radius: 5px; display:none;">
+                    <button class="btn btn-primary" onclick="applyReportFilter()" style="padding: 8px 16px;">
+                        <i class="fas fa-filter"></i> Áp dụng
+                    </button>
+                </div>
+
+                <!-- Report Stats -->
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-icon" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+                            <i class="fas fa-money-bill-wave"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3 id="report-total-revenue">0 ₫</h3>
+                            <p>Tổng doanh thu</p>
+                            <small id="report-revenue-change" class="text-muted">-</small>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);">
+                            <i class="fas fa-ticket-alt"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3 id="report-total-bookings">0</h3>
+                            <p>Tổng đặt vé</p>
+                            <small id="report-bookings-change" class="text-muted">-</small>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);">
+                            <i class="fas fa-user-plus"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3 id="report-new-users">0</h3>
+                            <p>Khách hàng mới</p>
+                            <small id="report-users-change" class="text-muted">-</small>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon" style="background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);">
+                            <i class="fas fa-percentage"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3 id="report-conversion-rate">0%</h3>
+                            <p>Tỷ lệ chuyển đổi</p>
+                            <small id="report-conversion-change" class="text-muted">-</small>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Report Tabs -->
+                <div class="report-tabs" style="margin: 20px 0;">
+                    <button class="report-tab active" onclick="switchReportTab('overview')" data-tab="overview">Tổng quan</button>
+                    <button class="report-tab" onclick="switchReportTab('customers')" data-tab="customers">Top Khách hàng</button>
+                    <button class="report-tab" onclick="switchReportTab('routes')" data-tab="routes">Top Tuyến đường</button>
+                    <button class="report-tab" onclick="switchReportTab('airlines')" data-tab="airlines">Top Hãng bay</button>
+                </div>
+
+                <!-- Report Content -->
+                <div id="report-overview" class="report-tab-content active">
+                    <div class="charts-grid">
+                        <div class="chart-card">
+                            <h3>Doanh thu theo thời gian</h3>
+                            <div style="position: relative; height: 300px;">
+                                <canvas id="reportRevenueChart"></canvas>
+                            </div>
+                        </div>
+                        <div class="chart-card">
+                            <h3>Phân tích đặt vé</h3>
+                            <div style="position: relative; height: 300px;">
+                                <canvas id="reportBookingsChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="report-customers" class="report-tab-content" style="display:none;">
+                    <div class="table-container">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>#</th>
+                                    <th>Khách hàng</th>
+                                    <th>Số đặt vé</th>
+                                    <th>Tổng tiền</th>
+                                </tr>
+                            </thead>
+                            <tbody id="report-customers-body"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div id="report-routes" class="report-tab-content" style="display:none;">
+                    <div class="table-container">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>#</th>
+                                    <th>Tuyến đường</th>
+                                    <th>Số chuyến bay</th>
+                                    <th>Số đặt vé</th>
+                                </tr>
+                            </thead>
+                            <tbody id="report-routes-body"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div id="report-airlines" class="report-tab-content" style="display:none;">
+                    <div class="table-container">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>#</th>
+                                    <th>Hãng bay</th>
+                                    <th>Số chuyến bay</th>
+                                    <th>Doanh thu</th>
+                                </tr>
+                            </thead>
+                            <tbody id="report-airlines-body"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Modals -->
+    <div id="booking-detail-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Chi tiết đặt vé</h3>
+                <span class="close">&times;</span>
+            </div>
+            <div class="modal-body" id="booking-detail-content">
+                <!-- Content will be loaded here -->
+            </div>
+        </div>
+    </div>
+
+    <div id="user-history-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Lịch sử đặt vé</h3>
+                <span class="close">&times;</span>
+            </div>
+            <div class="modal-body" id="user-history-content">
+                <!-- Content will be loaded here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Create/Edit Booking Modal -->
+    <div id="booking-form-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="booking-form-title">Thêm đặt vé mới</h3>
+                <span class="close">&times;</span>
+            </div>
+            <div class="modal-body">
+                <form id="booking-form">
+                    <input type="hidden" id="booking-id" name="bookingId">
+                    <div class="form-group">
+                        <label for="booking-user-id">Khách hàng *</label>
+                        <select id="booking-user-id" name="userId" required>
+                            <option value="">Chọn khách hàng</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="booking-flight-id">Chuyến bay *</label>
+                        <select id="booking-flight-id" name="flightId" required>
+                            <option value="">Chọn chuyến bay</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="booking-seat-class-id">Hạng ghế *</label>
+                        <select id="booking-seat-class-id" name="seatClassId" required>
+                            <option value="">Chọn hạng ghế</option>
+                            <option value="1">Economy</option>
+                            <option value="2">Business</option>
+                            <option value="3">First Class</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="booking-passengers">Số lượng hành khách *</label>
+                        <input type="number" id="booking-passengers" name="passengers" min="1" max="9" value="1" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="booking-status">Trạng thái</label>
+                        <select id="booking-status" name="bookingStatus">
+                            <option value="PENDING">Chờ xử lý</option>
+                            <option value="CONFIRMED">Đã xác nhận</option>
+                            <option value="CANCELLED">Đã hủy</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="booking-notes">Ghi chú</label>
+                        <textarea id="booking-notes" name="notes" rows="3"></textarea>
+                    </div>
+                    <div class="form-actions">
+                        <button type="button" class="btn btn-secondary" onclick="closeModal('booking-form-modal')">Hủy</button>
+                        <button type="submit" class="btn btn-primary">Lưu</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Create/Edit User Modal -->
+    <div id="user-form-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="user-form-title">Thêm khách hàng mới</h3>
+                <span class="close">&times;</span>
+            </div>
+            <div class="modal-body">
+                <form id="user-form">
+                    <input type="hidden" id="user-id" name="userId">
+                    <div class="form-group">
+                        <label for="user-username">Tên đăng nhập *</label>
+                        <input type="text" id="user-username" name="username" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="user-email">Email *</label>
+                        <input type="email" id="user-email" name="email" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="user-password">Mật khẩu *</label>
+                        <input type="password" id="user-password" name="password" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="user-fullname">Họ tên *</label>
+                        <input type="text" id="user-fullname" name="fullName" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="user-phone">Số điện thoại</label>
+                        <input type="tel" id="user-phone" name="phone">
+                    </div>
+                    <div class="form-group">
+                        <label for="user-active">Trạng thái</label>
+                        <select id="user-active" name="isActive">
+                            <option value="true">Hoạt động</option>
+                            <option value="false">Không hoạt động</option>
+                        </select>
+                    </div>
+                    <div class="form-actions">
+                        <button type="button" class="btn btn-secondary" onclick="closeModal('user-form-modal')">Hủy</button>
+                        <button type="submit" class="btn btn-primary">Lưu</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Create/Edit Payment Modal -->
+    <div id="payment-form-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="payment-form-title">Thêm thanh toán mới</h3>
+                <span class="close">&times;</span>
+            </div>
+            <div class="modal-body">
+                <form id="payment-form">
+                    <input type="hidden" id="payment-id" name="paymentId">
+                    <div class="form-group">
+                        <label for="payment-booking-id">Đặt vé *</label>
+                        <select id="payment-booking-id" name="bookingId" required>
+                            <option value="">Chọn đặt vé</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="payment-method">Phương thức thanh toán *</label>
+                        <select id="payment-method" name="paymentMethod" required>
+                            <option value="">Chọn phương thức</option>
+                            <option value="VNPAY">VNPay</option>
+                            <option value="MOMO">MoMo</option>
+                            <option value="ZALOPAY">ZaloPay</option>
+                            <option value="CARD">Thẻ tín dụng</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="payment-amount">Số tiền *</label>
+                        <input type="number" id="payment-amount" name="amount" step="0.01" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="payment-status">Trạng thái</label>
+                        <select id="payment-status" name="status">
+                            <option value="PENDING">Chờ xử lý</option>
+                            <option value="SUCCESS">Thành công</option>
+                            <option value="FAILED">Thất bại</option>
+                            <option value="REFUNDED">Đã hoàn tiền</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="payment-notes">Ghi chú</label>
+                        <textarea id="payment-notes" name="notes" rows="3"></textarea>
+                    </div>
+                    <div class="form-actions">
+                        <button type="button" class="btn btn-secondary" onclick="closeModal('payment-form-modal')">Hủy</button>
+                        <button type="submit" class="btn btn-primary">Lưu</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Delete Confirmation Modal -->
+    <div id="delete-confirm-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Xác nhận xóa</h3>
+                <span class="close">&times;</span>
+            </div>
+            <div class="modal-body">
+                <p id="delete-confirm-message">Bạn có chắc chắn muốn xóa mục này?</p>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal('delete-confirm-modal')">Hủy</button>
+                    <button type="button" class="btn btn-danger" onclick="confirmDelete()">Xóa</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- User Detail Modal -->
+    <div id="user-detail-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Chi tiết khách hàng</h3>
+                <span class="close">&times;</span>
+            </div>
+            <div class="modal-body" id="user-detail-content"></div>
+        </div>
+    </div>
+
+    <!-- Add/Edit Flight Modal (for Flights page) -->
+    <div id="flightModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeModal('flightModal')">&times;</span>
+            <h2 id="modalTitle">Add Flight</h2>
+            <form id="flightForm"></form>
+        </div>
+    </div>
+
+    <!-- Flight Detail Modal -->
+    <div id="flightDetailModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Chi tiết chuyến bay</h3>
+                <span class="close" onclick="closeFlightDetailModal()">&times;</span>
+            </div>
+            <div class="modal-body" id="flightDetailBody"></div>
+        </div>
+    </div>
+
+    <script src="js/config.js"></script>
+    <script src="js/api.js"></script>
+    <script src="js/api-checker.js"></script>
+    <script src="js/admin.js"></script>
+    <script src="js/flights.js"></script>
+    <script src="js/chat.js"></script>
+    <script src="js/admin-features.js"></script>
+</body>
+</html>

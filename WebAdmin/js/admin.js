@@ -62,7 +62,10 @@ function loadPage(page) {
         'users': 'Quản lý khách hàng',
         'payments': 'Quản lý thanh toán',
         'flights': 'Quản lý chuyến bay',
-        'airline-revenue': 'Doanh thu hãng bay'
+        'airline-revenue': 'Doanh thu hãng bay',
+        'customer-support': 'Hỗ trợ khách hàng',
+        'notifications': 'Quản lý thông báo',
+        'reports': 'Báo cáo & Phân tích'
     };
     document.getElementById('page-title').textContent = titles[page];
     
@@ -91,6 +94,16 @@ function loadPage(page) {
         case 'airline-revenue':
             loadAirlineRevenue();
             break;
+        case 'customer-support':
+            loadChatConversations();
+            setupChatAutoRefresh();
+            break;
+        case 'notifications':
+            loadNotifications();
+            break;
+        case 'reports':
+            loadReports();
+            break;
     }
 }
 
@@ -98,6 +111,11 @@ function loadPage(page) {
 async function loadDashboard() {
     try {
         showLoading('dashboard-page');
+        
+        // Initialize revenue filter dates
+        if (!revenueStartDate) {
+            updateRevenueDateInputs();
+        }
         
         // Load stats
         const [bookings, users, payments] = await Promise.all([
@@ -133,6 +151,10 @@ async function loadAirlineRevenue() {
         showLoading('airline-revenue-page');
         const stats = await api.dashboard.getAirlineStats();
         airlineRevenueData = stats || [];
+        
+        // Update stats
+        updateAirlineRevenueStats(airlineRevenueData || []);
+        
         airlineRevenueCurrentPage = 1;
         displayAirlineRevenue();
         hideLoading('airline-revenue-page');
@@ -141,6 +163,18 @@ async function loadAirlineRevenue() {
         showError('airline-revenue-page', 'Lỗi khi tải doanh thu hãng bay');
         hideLoading('airline-revenue-page');
     }
+}
+
+function updateAirlineRevenueStats(airlineData) {
+    const totalAirlines = airlineData.length;
+    const totalRevenue = airlineData.reduce((sum, a) => sum + parseFloat(a.revenue || 0), 0);
+    const totalBookings = airlineData.reduce((sum, a) => sum + parseFloat(a.totalBookings || 0), 0);
+    const avgRevenue = totalAirlines > 0 ? totalRevenue / totalAirlines : 0;
+    
+    document.getElementById('airline-revenue-total-airlines').textContent = totalAirlines;
+    document.getElementById('airline-revenue-total-revenue').textContent = formatCurrency(totalRevenue);
+    document.getElementById('airline-revenue-total-bookings').textContent = totalBookings;
+    document.getElementById('airline-revenue-avg-revenue').textContent = formatCurrency(avgRevenue);
 }
 
 function handleAirlineRevenueSearch(event) {
@@ -269,13 +303,26 @@ async function loadCharts(bookings, payments) {
         if (revenueChart) revenueChart.destroy();
         
         const monthlyRevenue = getMonthlyRevenueFromBookings(bookings);
+        
+        // Update chart title
+        const titleMap = {
+            'day': 'Doanh thu theo ngày',
+            'week': 'Doanh thu theo tuần',
+            'month': 'Doanh thu theo tháng',
+            'year': 'Doanh thu theo năm'
+        };
+        const titleEl = document.getElementById('revenue-chart-title');
+        if (titleEl) {
+            titleEl.textContent = titleMap[revenueTimeFilter] || 'Doanh thu theo tháng';
+        }
+        
         revenueChart = new Chart(revenueCtx.getContext('2d'), {
         type: 'line',
         data: {
             labels: monthlyRevenue.labels,
             datasets: [{
                 label: 'Doanh thu (VNĐ)',
-                data: monthlyRevenue.data,
+                data: monthlyRevenue.data.length > 0 ? monthlyRevenue.data : [0],
                 borderColor: '#667eea',
                 backgroundColor: 'rgba(102, 126, 234, 0.1)',
                 tension: 0.4
@@ -465,36 +512,168 @@ async function loadCharts(bookings, payments) {
     }
 }
 
-function getMonthlyRevenueFromBookings(bookings) {
-    const monthlyData = {};
-    const currentDate = new Date();
+let revenueTimeFilter = 'month';
+let revenueStartDate = null;
+let revenueEndDate = null;
+
+function changeRevenueTimeFilter() {
+    revenueTimeFilter = document.getElementById('revenue-time-filter').value;
+    updateRevenueDateInputs();
+}
+
+function updateRevenueDateInputs() {
+    const startDateEl = document.getElementById('revenue-start-date');
+    const endDateEl = document.getElementById('revenue-end-date');
+    const today = new Date();
     
-    // Initialize last 6 months
-    for (let i = 5; i >= 0; i--) {
-        const date = new Date(currentDate.getFullYear(), currentDate.getMonth() - i, 1);
-        const key = date.toISOString().substring(0, 7);
-        monthlyData[key] = 0;
+    if (!startDateEl || !endDateEl) return;
+    
+    switch(revenueTimeFilter) {
+        case 'day':
+            startDateEl.type = 'date';
+            endDateEl.type = 'date';
+            startDateEl.value = formatDateInput(today);
+            endDateEl.value = formatDateInput(today);
+            break;
+        case 'week':
+            startDateEl.type = 'week';
+            endDateEl.type = 'week';
+            const week = getWeekNumber(today);
+            startDateEl.value = `${today.getFullYear()}-W${week}`;
+            endDateEl.value = `${today.getFullYear()}-W${week}`;
+            break;
+        case 'month':
+            startDateEl.type = 'month';
+            endDateEl.type = 'month';
+            startDateEl.value = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+            endDateEl.value = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+            break;
+        case 'year':
+            startDateEl.type = 'number';
+            endDateEl.type = 'number';
+            startDateEl.value = today.getFullYear();
+            endDateEl.value = today.getFullYear();
+            break;
+    }
+}
+
+function formatDateInput(date) {
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+function getWeekNumber(date) {
+    const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+    const dayNum = d.getUTCDay() || 7;
+    d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+    const yearStart = new Date(Date.UTC(d.getUTCFullYear(),0,1));
+    return Math.ceil((((d - yearStart) / 86400000) + 1)/7);
+}
+
+function applyRevenueFilter() {
+    revenueStartDate = document.getElementById('revenue-start-date').value;
+    revenueEndDate = document.getElementById('revenue-end-date').value;
+    
+    // Reload charts with filter
+    loadDashboard();
+}
+
+function getMonthlyRevenueFromBookings(bookings) {
+    let filteredBookings = bookings || [];
+    
+    // Apply date filter if set
+    if (revenueStartDate && revenueEndDate) {
+        const start = new Date(revenueStartDate);
+        const end = new Date(revenueEndDate);
+        
+        if (revenueTimeFilter === 'year') {
+            start.setFullYear(parseInt(revenueStartDate));
+            start.setMonth(0, 1);
+            end.setFullYear(parseInt(revenueEndDate));
+            end.setMonth(11, 31);
+        } else if (revenueTimeFilter === 'month') {
+            const [year, month] = revenueStartDate.split('-').map(Number);
+            start.setFullYear(year, month - 1, 1);
+            end.setFullYear(year, month - 1, 31);
+        } else if (revenueTimeFilter === 'week') {
+            // Parse week format YYYY-Www
+            const [year, week] = revenueStartDate.match(/(\d{4})-W(\d{2})/).slice(1).map(Number);
+            start.setFullYear(year, 0, 1);
+            const daysToAdd = (week - 1) * 7;
+            start.setDate(start.getDate() + daysToAdd);
+            end.setTime(start.getTime());
+            end.setDate(end.getDate() + 6);
+        }
+        
+        end.setHours(23, 59, 59, 999);
+        
+        filteredBookings = filteredBookings.filter(b => {
+            if (!b.bookingDate) return false;
+            const bookingDate = new Date(b.bookingDate);
+            return bookingDate >= start && bookingDate <= end;
+        });
     }
     
-    // Sum revenue by month from bookings with PaymentStatus = PAID
-    if (bookings && bookings.length > 0) {
-        bookings
+    const data = {};
+    const currentDate = new Date();
+    
+    // Group by time period
+    if (revenueTimeFilter === 'day') {
+        // Daily data
+        filteredBookings
+            .filter(b => b.paymentStatus === 'PAID' && b.bookingDate)
+            .forEach(booking => {
+                const date = new Date(booking.bookingDate);
+                const key = date.toISOString().substring(0, 10);
+                data[key] = (data[key] || 0) + parseFloat(booking.totalAmount || 0);
+            });
+    } else if (revenueTimeFilter === 'week') {
+        // Weekly data
+        filteredBookings
+            .filter(b => b.paymentStatus === 'PAID' && b.bookingDate)
+            .forEach(booking => {
+                const date = new Date(booking.bookingDate);
+                const week = getWeekNumber(date);
+                const key = `${date.getFullYear()}-W${week}`;
+                data[key] = (data[key] || 0) + parseFloat(booking.totalAmount || 0);
+            });
+    } else if (revenueTimeFilter === 'month') {
+        // Monthly data
+        filteredBookings
             .filter(b => b.paymentStatus === 'PAID' && b.bookingDate)
             .forEach(booking => {
                 const date = new Date(booking.bookingDate);
                 const key = date.toISOString().substring(0, 7);
-                if (monthlyData.hasOwnProperty(key)) {
-                    monthlyData[key] += parseFloat(booking.totalAmount || 0);
-                }
+                data[key] = (data[key] || 0) + parseFloat(booking.totalAmount || 0);
+            });
+    } else if (revenueTimeFilter === 'year') {
+        // Yearly data
+        filteredBookings
+            .filter(b => b.paymentStatus === 'PAID' && b.bookingDate)
+            .forEach(booking => {
+                const date = new Date(booking.bookingDate);
+                const key = date.getFullYear().toString();
+                data[key] = (data[key] || 0) + parseFloat(booking.totalAmount || 0);
             });
     }
     
-    return {
-        labels: Object.keys(monthlyData).map(key => {
+    // Sort keys and format labels
+    const sortedKeys = Object.keys(data).sort();
+    const labels = sortedKeys.map(key => {
+        if (revenueTimeFilter === 'day') {
+            return new Date(key).toLocaleDateString('vi-VN');
+        } else if (revenueTimeFilter === 'week') {
+            return key;
+        } else if (revenueTimeFilter === 'month') {
             const date = new Date(key + '-01');
             return date.toLocaleDateString('vi-VN', { month: 'short', year: 'numeric' });
-        }),
-        data: Object.values(monthlyData)
+        } else {
+            return key;
+        }
+    });
+    
+    return {
+        labels: labels.length > 0 ? labels : ['Chưa có dữ liệu'],
+        data: sortedKeys.map(key => data[key])
     };
 }
 
@@ -634,14 +813,60 @@ async function loadBookings() {
         const bookings = await api.bookings.getAdminBookings();
         // Lưu vào global array để dùng cho search/filter/sort/pagination
         allBookingsData = bookings || [];
+        
+        // Update stats
+        updateBookingsStats(bookings || []);
+        
         // Gọi hàm display mới với pagination
         displayBookings();
+        
+        // Restore search/filter values
+        restoreBookingsFilters();
+        
         hideLoading('bookings-page');
     } catch (error) {
         console.error('Error loading bookings:', error);
         showError('bookings-page', 'Lỗi khi tải danh sách đặt vé');
         hideLoading('bookings-page');
     }
+}
+
+function restoreBookingsFilters() {
+    const searchInput = document.getElementById('bookings-search');
+    const statusFilter = document.getElementById('bookings-filter-status');
+    const sortSelect = document.getElementById('bookings-sort');
+    const perPageSelect = document.getElementById('bookings-per-page');
+    
+    // Restore search value from sessionStorage if available
+    if (searchInput) {
+        const storedValue = sessionStorage.getItem('bookings-search-value');
+        if (storedValue) {
+            searchInput.value = storedValue;
+        }
+    }
+    if (statusFilter && bookingsFilters.status) {
+        statusFilter.value = bookingsFilters.status;
+    }
+    if (sortSelect && bookingsSort) {
+        sortSelect.value = bookingsSort;
+    }
+    if (perPageSelect) {
+        perPageSelect.value = bookingsPerPage;
+    }
+}
+
+function updateBookingsStats(bookings) {
+    const total = bookings.length;
+    const confirmed = bookings.filter(b => b.bookingStatus === 'CONFIRMED').length;
+    const totalRevenue = bookings
+        .filter(b => b.paymentStatus === 'PAID')
+        .reduce((sum, b) => sum + parseFloat(b.totalAmount || 0), 0);
+    const successRate = total > 0 ? Math.round((confirmed / total) * 100) : 0;
+    
+    document.getElementById('bookings-total-bookings').textContent = total;
+    document.getElementById('bookings-confirmed').textContent = confirmed;
+    document.getElementById('bookings-total-revenue').textContent = formatCurrency(totalRevenue);
+    document.getElementById('bookings-success-rate').textContent = successRate + '%';
 }
 
 // Display function được thay thế bởi displayBookings() mới ở cuối file
@@ -659,14 +884,70 @@ async function loadUsers() {
         const users = await api.getUsers();
         // Lưu vào global array để dùng cho search/filter/sort/pagination
         allUsersData = users;
+        
+        // Update stats
+        updateUsersStats(users || []);
+        
         // Gọi hàm display mới với pagination
         displayUsers();
+        
+        // Restore search/filter values
+        restoreUsersFilters();
+        
         hideLoading('users-page');
     } catch (error) {
         console.error('Error loading users:', error);
         showError('users-page', 'Lỗi khi tải danh sách khách hàng');
         hideLoading('users-page');
     }
+}
+
+function restoreUsersFilters() {
+    const searchInput = document.getElementById('users-search');
+    const sortSelect = document.getElementById('users-sort');
+    const perPageSelect = document.getElementById('users-per-page');
+    
+    // Restore search value from sessionStorage if available
+    if (searchInput) {
+        const storedValue = sessionStorage.getItem('users-search-value');
+        if (storedValue) {
+            searchInput.value = storedValue;
+        }
+    }
+    if (sortSelect && usersSort) {
+        sortSelect.value = usersSort;
+    }
+    if (perPageSelect) {
+        perPageSelect.value = usersPerPage;
+    }
+}
+
+function updateUsersStats(users) {
+    const total = users.length;
+    const active = users.filter(u => u.isActive !== false).length;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const newToday = users.filter(u => {
+        if (!u.createdAt) return false;
+        const createdDate = new Date(u.createdAt);
+        createdDate.setHours(0, 0, 0, 0);
+        return createdDate.getTime() === today.getTime();
+    }).length;
+    
+    // Calculate total bookings for all users
+    let totalBookings = 0;
+    Promise.all(users.map(async u => {
+        try {
+            const userBookings = await api.getUserBookings(u.userId).catch(() => []);
+            totalBookings += (userBookings || []).length;
+        } catch (e) {}
+    })).then(() => {
+        document.getElementById('users-total-bookings').textContent = totalBookings;
+    });
+    
+    document.getElementById('users-total-users').textContent = total;
+    document.getElementById('users-active-users').textContent = active;
+    document.getElementById('users-new-today').textContent = newToday;
 }
 
 // Display function được thay thế bởi displayUsers() mới ở cuối file
@@ -678,14 +959,64 @@ async function loadPayments() {
         const payments = await api.getPayments();
         // Lưu vào global array để dùng cho search/filter/sort/pagination
         allPaymentsData = payments;
+        
+        // Update stats
+        updatePaymentsStats(payments || []);
+        
         // Gọi hàm display mới với pagination
         displayPayments();
+        
+        // Restore search/filter values
+        restorePaymentsFilters();
+        
         hideLoading('payments-page');
     } catch (error) {
         console.error('Error loading payments:', error);
         showError('payments-page', 'Lỗi khi tải danh sách thanh toán');
         hideLoading('payments-page');
     }
+}
+
+function restorePaymentsFilters() {
+    const searchInput = document.getElementById('payments-search');
+    const methodFilter = document.getElementById('payments-filter-method');
+    const statusFilter = document.getElementById('payments-filter-status');
+    const sortSelect = document.getElementById('payments-sort');
+    const perPageSelect = document.getElementById('payments-per-page');
+    
+    // Restore search value from sessionStorage if available
+    if (searchInput) {
+        const storedValue = sessionStorage.getItem('payments-search-value');
+        if (storedValue) {
+            searchInput.value = storedValue;
+        }
+    }
+    if (methodFilter && paymentsFilters.method) {
+        methodFilter.value = paymentsFilters.method;
+    }
+    if (statusFilter && paymentsFilters.status) {
+        statusFilter.value = paymentsFilters.status;
+    }
+    if (sortSelect && paymentsSort) {
+        sortSelect.value = paymentsSort;
+    }
+    if (perPageSelect) {
+        perPageSelect.value = paymentsPerPage;
+    }
+}
+
+function updatePaymentsStats(payments) {
+    const total = payments.length;
+    const success = payments.filter(p => p.status === 'SUCCESS').length;
+    const totalRevenue = payments
+        .filter(p => p.status === 'SUCCESS')
+        .reduce((sum, p) => sum + parseFloat(p.amount || 0), 0);
+    const successRate = total > 0 ? Math.round((success / total) * 100) : 0;
+    
+    document.getElementById('payments-total').textContent = total;
+    document.getElementById('payments-success').textContent = success;
+    document.getElementById('payments-total-revenue').textContent = formatCurrency(totalRevenue);
+    document.getElementById('payments-success-rate').textContent = successRate + '%';
 }
 
 // Display function được thay thế bởi displayPayments() mới ở cuối file
@@ -695,16 +1026,26 @@ function setupModals() {
     // Close modals when clicking X
     document.querySelectorAll('.close').forEach(closeBtn => {
         closeBtn.addEventListener('click', function() {
-            this.closest('.modal').style.display = 'none';
+            const modal = this.closest('.modal');
+            if (modal) {
+                const modalId = modal.id;
+                closeModal(modalId);
+            }
         });
     });
     
     // Close modals when clicking outside
     window.addEventListener('click', function(event) {
         if (event.target.classList.contains('modal')) {
-            event.target.style.display = 'none';
+            const modalId = event.target.id;
+            closeModal(modalId);
         }
     });
+    
+    // Handle closeFlightDetailModal
+    window.closeFlightDetailModal = function() {
+        closeModal('flightDetailModal');
+    };
 }
 
 // View Booking Detail
@@ -766,12 +1107,26 @@ async function viewBookingDetail(bookingId) {
 // View User Detail
 async function viewUserDetail(userId) {
     try {
-        const user = await api.getUserById(userId);
+        const [user, unreadCount] = await Promise.all([
+            api.getUserById(userId),
+            api.getUnreadNotificationCount(userId).catch(() => 0)
+        ]);
+        
         const modal = document.getElementById('user-detail-modal');
         const content = document.getElementById('user-detail-content');
         
         content.innerHTML = `
             <div class="user-detail">
+                <div class="detail-tabs">
+                    <button class="tab-btn active" onclick="showUserTab('info', ${userId})">Thông tin</button>
+                    <button class="tab-btn" onclick="showUserTab('notifications', ${userId})">
+                        Thông báo 
+                        ${unreadCount > 0 ? `<span class="badge">${unreadCount}</span>` : ''}
+                    </button>
+                    <button class="tab-btn" onclick="showUserTab('bookings', ${userId})">Đặt vé</button>
+                </div>
+                
+                <div id="user-info-tab" class="tab-content active">
                 <h4>Thông tin tài khoản</h4>
                 <div class="detail-grid">
                     <div class="detail-item">
@@ -810,6 +1165,17 @@ async function viewUserDetail(userId) {
                     <div class="detail-item">
                         <strong>Tổng chi tiêu:</strong> ${formatCurrency(user.totalSpent || 0)}
                     </div>
+                    </div>
+                </div>
+                
+                <div id="user-notifications-tab" class="tab-content" style="display: none;">
+                    <h4>Thông báo của khách hàng</h4>
+                    <div id="user-notifications-list">Đang tải...</div>
+                </div>
+                
+                <div id="user-bookings-tab" class="tab-content" style="display: none;">
+                    <h4>Lịch sử đặt vé</h4>
+                    <div id="user-bookings-list">Đang tải...</div>
                 </div>
             </div>
         `;
@@ -821,17 +1187,157 @@ async function viewUserDetail(userId) {
     }
 }
 
-// View User History
+async function showUserTab(tabName, userId) {
+    // Update tab buttons
+    const allTabs = document.querySelectorAll('.tab-btn');
+    const allContents = document.querySelectorAll('.tab-content');
+    
+    allTabs.forEach(btn => btn.classList.remove('active'));
+    allContents.forEach(content => {
+        content.classList.remove('active');
+        content.style.display = 'none';
+    });
+    
+    // Set active button
+    if (event && event.target) {
+        event.target.classList.add('active');
+    } else {
+        // Nếu không có event, tìm button theo tabName
+        allTabs.forEach(btn => {
+            if (btn.textContent.includes(tabName === 'info' ? 'Thông tin' : tabName === 'notifications' ? 'Thông báo' : 'Đặt vé')) {
+                btn.classList.add('active');
+            }
+        });
+    }
+    
+    if (tabName === 'notifications') {
+        const tabContent = document.getElementById('user-notifications-tab');
+        tabContent.style.display = 'block';
+        tabContent.classList.add('active');
+        
+        try {
+            const notifications = await api.getUserNotifications(userId, 1, 20);
+            const listDiv = document.getElementById('user-notifications-list');
+            
+            if (!notifications || notifications.length === 0) {
+                listDiv.innerHTML = '<p>Khách hàng chưa có thông báo nào.</p>';
+            } else {
+                listDiv.innerHTML = `
+                    <div class="notifications-list">
+                        ${notifications.map(notif => `
+                            <div class="notification-item ${notif.isRead ? 'read' : 'unread'}">
+                                <div class="notification-header">
+                                    <strong>${notif.title || 'Thông báo'}</strong>
+                                    <span class="notification-date">${formatDate(notif.createdAt)}</span>
+                                </div>
+                                <div class="notification-body">${notif.message || ''}</div>
+                                ${!notif.isRead ? `<button class="btn btn-sm" onclick="markUserNotificationAsRead(${notif.notificationId}, ${userId})">Đánh dấu đã đọc</button>` : ''}
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+            }
+        } catch (error) {
+            document.getElementById('user-notifications-list').innerHTML = '<p class="error">Lỗi khi tải thông báo</p>';
+        }
+    } else if (tabName === 'bookings') {
+        const tabContent = document.getElementById('user-bookings-tab');
+        tabContent.style.display = 'block';
+        tabContent.classList.add('active');
+        
+        try {
+            const bookings = await api.getUserBookingHistory(userId, 1, 20);
+            const listDiv = document.getElementById('user-bookings-list');
+            
+            if (!bookings || bookings.length === 0) {
+                listDiv.innerHTML = '<p>Khách hàng chưa có đặt vé nào.</p>';
+            } else {
+                listDiv.innerHTML = `
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Mã đặt vé</th>
+                                <th>Chuyến bay</th>
+                                <th>Tổng tiền</th>
+                                <th>Trạng thái</th>
+                                <th>Ngày đặt</th>
+                                <th>Thao tác</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${bookings.map(booking => `
+                                <tr>
+                                    <td>${booking.bookingReference || booking.bookingId}</td>
+                                    <td>${booking.flight?.flightNumber || 'N/A'}</td>
+                                    <td>${formatCurrency(booking.totalAmount)}</td>
+                                    <td><span class="status-badge status-${booking.bookingStatus?.toLowerCase()}">${getStatusText(booking.bookingStatus)}</span></td>
+                                    <td>${formatDate(booking.bookingDate)}</td>
+                                    <td>
+                                        <button class="btn btn-sm" onclick="viewUserBookingDetail(${userId}, ${booking.bookingId})">Chi tiết</button>
+                                    </td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                `;
+            }
+        } catch (error) {
+            document.getElementById('user-bookings-list').innerHTML = '<p class="error">Lỗi khi tải lịch sử đặt vé</p>';
+        }
+    } else {
+        const tabContent = document.getElementById('user-info-tab');
+        tabContent.style.display = 'block';
+        tabContent.classList.add('active');
+    }
+}
+
+async function markUserNotificationAsRead(notificationId, userId) {
+    try {
+        await api.markNotificationAsRead(notificationId, userId);
+        showUserTab('notifications', userId);
+    } catch (error) {
+        console.error('Error marking notification as read:', error);
+    }
+}
+
+async function viewUserBookingDetail(userId, bookingId) {
+    try {
+        const booking = await api.getUserBookingDetail(userId, bookingId);
+        const modal = document.getElementById('booking-detail-modal');
+        const content = document.getElementById('booking-detail-content');
+        
+        content.innerHTML = `
+            <div class="booking-detail">
+                <h4>Chi tiết đặt vé</h4>
+                <div class="detail-grid">
+                    <div class="detail-item"><strong>Mã đặt vé:</strong> ${booking.bookingReference || booking.bookingId}</div>
+                    <div class="detail-item"><strong>Chuyến bay:</strong> ${booking.flight?.flightNumber || 'N/A'}</div>
+                    <div class="detail-item"><strong>Tổng tiền:</strong> ${formatCurrency(booking.totalAmount)}</div>
+                    <div class="detail-item"><strong>Trạng thái:</strong> <span class="status-badge status-${booking.bookingStatus?.toLowerCase()}">${getStatusText(booking.bookingStatus)}</span></div>
+                    <div class="detail-item"><strong>Ngày đặt:</strong> ${formatDate(booking.bookingDate)}</div>
+                    ${booking.passengers ? `<div class="detail-item"><strong>Hành khách:</strong> ${booking.passengers.length}</div>` : ''}
+                </div>
+            </div>
+        `;
+        
+        modal.style.display = 'block';
+    } catch (error) {
+        console.error('Error loading booking detail:', error);
+        showAlert('Lỗi khi tải chi tiết đặt vé', 'error');
+    }
+}
+
+// View User History - Sử dụng API mới getUserBookingHistory
 async function viewUserHistory(userId) {
     try {
-        const bookings = await api.getUserBookings(userId);
+        const bookings = await api.getUserBookingHistory(userId, 1, 50);
         const modal = document.getElementById('user-history-modal');
         const content = document.getElementById('user-history-content');
         
         content.innerHTML = `
             <div class="user-history">
                 <h4>Lịch sử đặt vé</h4>
-                ${bookings.length === 0 ? 
+                ${!bookings || bookings.length === 0 ? 
                     '<p>Khách hàng chưa có đặt vé nào.</p>' :
                     `<table class="data-table">
                         <thead>
@@ -842,17 +1348,21 @@ async function viewUserHistory(userId) {
                                 <th>Tổng tiền</th>
                                 <th>Trạng thái</th>
                                 <th>Ngày đặt</th>
+                                <th>Thao tác</th>
                             </tr>
                         </thead>
                         <tbody>
                             ${bookings.map(booking => `
                                 <tr>
-                                    <td>${booking.bookingReference}</td>
+                                    <td>${booking.bookingReference || booking.bookingId}</td>
                                     <td>${booking.flight?.flightNumber || 'N/A'}</td>
                                     <td>${booking.seats?.length || 0}</td>
                                     <td>${formatCurrency(booking.totalAmount)}</td>
                                     <td><span class="status-badge status-${booking.bookingStatus?.toLowerCase()}">${getStatusText(booking.bookingStatus)}</span></td>
                                     <td>${formatDate(booking.bookingDate)}</td>
+                                    <td>
+                                        <button class="btn btn-sm" onclick="viewUserBookingDetail(${userId}, ${booking.bookingId})">Chi tiết</button>
+                                    </td>
                                 </tr>
                             `).join('')}
                         </tbody>
@@ -868,23 +1378,43 @@ async function viewUserHistory(userId) {
     }
 }
 
-// View Payment Detail
+// View Payment Detail - Thêm check payment status
 async function viewPaymentDetail(paymentId) {
     try {
         const payment = await api.getPaymentById(paymentId);
         const modal = document.getElementById('booking-detail-modal');
         const content = document.getElementById('booking-detail-content');
         
+        // Nếu có transactionId, check payment status
+        let paymentStatusInfo = '';
+        if (payment.transactionId) {
+            try {
+                const status = await api.getPaymentStatus(payment.transactionId);
+                paymentStatusInfo = `
+                    <div class="payment-status-info">
+                        <p><strong>Trạng thái kiểm tra:</strong> <span class="status-badge status-${status.status?.toLowerCase()}">${getStatusText(status.status)}</span></p>
+                        ${status.processedAt ? `<p><strong>Thời gian xử lý:</strong> ${formatDate(status.processedAt)}</p>` : ''}
+                    </div>
+                `;
+            } catch (e) {
+                console.warn('Could not fetch payment status:', e);
+            }
+        }
+        
         content.innerHTML = `
             <div class="payment-detail">
                 <h4>Chi tiết thanh toán</h4>
-                <p><strong>ID:</strong> ${payment.paymentId}</p>
-                <p><strong>Mã giao dịch:</strong> ${payment.transactionId}</p>
-                <p><strong>Phương thức:</strong> ${getPaymentMethodText(payment.paymentMethod)}</p>
-                <p><strong>Số tiền:</strong> ${formatCurrency(payment.amount)}</p>
-                <p><strong>Trạng thái:</strong> ${getStatusText(payment.status)}</p>
-                <p><strong>Ngày tạo:</strong> ${formatDate(payment.createdAt)}</p>
-                ${payment.paymentUrl ? `<p><strong>URL thanh toán:</strong> <a href="${payment.paymentUrl}" target="_blank">Xem</a></p>` : ''}
+                <div class="detail-grid">
+                    <div class="detail-item"><strong>ID:</strong> ${payment.paymentId}</div>
+                    <div class="detail-item"><strong>Mã giao dịch:</strong> ${payment.transactionId || 'N/A'}</div>
+                    <div class="detail-item"><strong>Phương thức:</strong> ${getPaymentMethodText(payment.paymentMethod)}</div>
+                    <div class="detail-item"><strong>Số tiền:</strong> ${formatCurrency(payment.amount)}</div>
+                    <div class="detail-item"><strong>Trạng thái:</strong> <span class="status-badge status-${payment.status?.toLowerCase()}">${getStatusText(payment.status)}</span></div>
+                    <div class="detail-item"><strong>Ngày tạo:</strong> ${formatDate(payment.createdAt)}</div>
+                    ${payment.paymentUrl ? `<div class="detail-item"><strong>URL thanh toán:</strong> <a href="${payment.paymentUrl}" target="_blank">Xem</a></div>` : ''}
+                    ${payment.transactionId ? `<div class="detail-item"><button class="btn btn-sm" onclick="checkPaymentStatus('${payment.transactionId}')">Kiểm tra trạng thái</button></div>` : ''}
+                </div>
+                ${paymentStatusInfo}
         </div>
         `;
         
@@ -892,6 +1422,16 @@ async function viewPaymentDetail(paymentId) {
     } catch (error) {
         console.error('Error loading payment detail:', error);
         alert('Lỗi khi tải chi tiết thanh toán');
+    }
+}
+
+async function checkPaymentStatus(transactionId) {
+    try {
+        const status = await api.getPaymentStatus(transactionId);
+        showAlert(`Trạng thái thanh toán: ${getStatusText(status.status)}`, 'info');
+    } catch (error) {
+        console.error('Error checking payment status:', error);
+        showAlert('Lỗi khi kiểm tra trạng thái thanh toán', 'error');
     }
 }
 
@@ -1128,16 +1668,122 @@ async function loadBookingDropdowns() {
 async function handleBookingSubmit(e) {
     e.preventDefault();
     
-    const formData = new FormData(e.target);
-    const bookingData = Object.fromEntries(formData.entries());
+    // Validation
+    const userIdEl = document.getElementById('booking-user-id');
+    const flightIdEl = document.getElementById('booking-flight-id');
+    const seatClassIdEl = document.getElementById('booking-seat-class-id');
+    const passengersEl = document.getElementById('booking-passengers');
+    const bookingStatusEl = document.getElementById('booking-status');
+    const notesEl = document.getElementById('booking-notes');
+    
+    const userId = userIdEl ? userIdEl.value : '';
+    const flightId = flightIdEl ? flightIdEl.value : '';
+    const seatClassId = seatClassIdEl ? seatClassIdEl.value : '';
+    const passengers = passengersEl ? passengersEl.value : '';
+    const bookingStatus = bookingStatusEl ? bookingStatusEl.value : '';
+    const notes = notesEl ? notesEl.value.trim() : '';
+    
+    if (!userId || userId === '') {
+        showAlert('Vui lòng chọn khách hàng', 'error');
+        if (userIdEl) userIdEl.focus();
+        return;
+    }
+    
+    const userIdNum = parseInt(userId);
+    if (isNaN(userIdNum) || userIdNum <= 0) {
+        showAlert('Khách hàng không hợp lệ', 'error');
+        if (userIdEl) userIdEl.focus();
+        return;
+    }
+    
+    if (!flightId || flightId === '') {
+        showAlert('Vui lòng chọn chuyến bay', 'error');
+        if (flightIdEl) flightIdEl.focus();
+        return;
+    }
+    
+    const flightIdNum = parseInt(flightId);
+    if (isNaN(flightIdNum) || flightIdNum <= 0) {
+        showAlert('Chuyến bay không hợp lệ', 'error');
+        if (flightIdEl) flightIdEl.focus();
+        return;
+    }
+    
+    if (!seatClassId || seatClassId === '') {
+        showAlert('Vui lòng chọn hạng ghế', 'error');
+        if (seatClassIdEl) seatClassIdEl.focus();
+        return;
+    }
+    
+    const seatClassIdNum = parseInt(seatClassId);
+    if (isNaN(seatClassIdNum) || seatClassIdNum <= 0) {
+        showAlert('Hạng ghế không hợp lệ', 'error');
+        if (seatClassIdEl) seatClassIdEl.focus();
+        return;
+    }
+    
+    if (!passengers || passengers === '') {
+        showAlert('Vui lòng nhập số lượng hành khách', 'error');
+        if (passengersEl) passengersEl.focus();
+        return;
+    }
+    
+    const passengersNum = parseInt(passengers);
+    if (isNaN(passengersNum) || passengersNum < 1 || passengersNum > 9) {
+        showAlert('Số lượng hành khách phải từ 1 đến 9', 'error');
+        if (passengersEl) passengersEl.focus();
+        return;
+    }
+    
+    if (!bookingStatus || bookingStatus === '') {
+        showAlert('Vui lòng chọn trạng thái đặt vé', 'error');
+        if (bookingStatusEl) bookingStatusEl.focus();
+        return;
+    }
+    
+    const validStatuses = ['PENDING', 'CONFIRMED', 'CANCELLED'];
+    if (!validStatuses.includes(bookingStatus)) {
+        showAlert('Trạng thái đặt vé không hợp lệ', 'error');
+        if (bookingStatusEl) bookingStatusEl.focus();
+        return;
+    }
+    
+    // Notes validation
+    if (notes.length > 1000) {
+        showAlert('Ghi chú không được vượt quá 1000 ký tự', 'error');
+        if (notesEl) notesEl.focus();
+        return;
+    }
     
     try {
         if (currentEditId) {
-            // Update existing booking
+            // Update existing booking - only allow status and notes update
+            const bookingData = {
+                bookingStatus: bookingStatus,
+                notes: notes || null
+            };
             await api.updateBooking(currentEditId, bookingData);
             showAlert('Cập nhật đặt vé thành công!', 'success');
         } else {
-            // Create new booking
+            // Create new booking - need full data
+            // Generate passenger details automatically
+            const passengerDetails = [];
+            for (let i = 1; i <= passengersNum; i++) {
+                passengerDetails.push({
+                    passengerName: `Hành khách ${i}`,
+                    passengerIdNumber: null
+                });
+            }
+            
+            const bookingData = {
+                userId: userIdNum,
+                flightId: flightIdNum,
+                seatClassId: seatClassIdNum,
+                passengers: passengersNum,
+                passengerDetails: passengerDetails,
+                notes: notes || null
+            };
+            
             await api.createBooking(bookingData);
             showAlert('Tạo đặt vé thành công!', 'success');
         }
@@ -1146,7 +1792,9 @@ async function handleBookingSubmit(e) {
         loadBookings();
     } catch (error) {
         console.error('Error saving booking:', error);
-        showAlert('Lỗi khi lưu đặt vé: ' + error.message, 'error');
+        const errorMsg = error.message || 'Lỗi không xác định';
+        showAlert('Lỗi khi lưu đặt vé: ' + errorMsg, 'error');
+        // Don't close modal on error - keep form values
     }
 }
 
@@ -1202,6 +1850,122 @@ async function showEditUserModal(userId) {
 async function handleUserSubmit(e) {
     e.preventDefault();
     
+    // Validation
+    const username = document.getElementById('user-username').value.trim();
+    const email = document.getElementById('user-email').value.trim();
+    const password = document.getElementById('user-password').value;
+    const fullNameEl = document.getElementById('user-fullname') || document.getElementById('user-full-name');
+    const fullName = fullNameEl ? fullNameEl.value.trim() : '';
+    const phoneEl = document.getElementById('user-phone');
+    const phone = phoneEl ? phoneEl.value.trim() : '';
+    
+    if (!username || username === '') {
+        showAlert('Vui lòng nhập tên đăng nhập', 'error');
+        document.getElementById('user-username').focus();
+        return;
+    }
+    
+    // Username validation
+    if (username.length < 3) {
+        showAlert('Tên đăng nhập phải có ít nhất 3 ký tự', 'error');
+        document.getElementById('user-username').focus();
+        return;
+    }
+    
+    if (username.length > 50) {
+        showAlert('Tên đăng nhập không được vượt quá 50 ký tự', 'error');
+        document.getElementById('user-username').focus();
+        return;
+    }
+    
+    const usernameRegex = /^[a-zA-Z0-9_]+$/;
+    if (!usernameRegex.test(username)) {
+        showAlert('Tên đăng nhập chỉ được chứa chữ cái, số và dấu gạch dưới', 'error');
+        document.getElementById('user-username').focus();
+        return;
+    }
+    
+    // Email validation
+    if (!email || email === '') {
+        showAlert('Vui lòng nhập email', 'error');
+        document.getElementById('user-email').focus();
+        return;
+    }
+    
+    if (email.length > 100) {
+        showAlert('Email không được vượt quá 100 ký tự', 'error');
+        document.getElementById('user-email').focus();
+        return;
+    }
+    
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+        showAlert('Email không hợp lệ. Ví dụ: user@example.com', 'error');
+        document.getElementById('user-email').focus();
+        return;
+    }
+    
+    // Password validation
+    if (!currentEditId && (!password || password === '')) {
+        showAlert('Vui lòng nhập mật khẩu', 'error');
+        document.getElementById('user-password').focus();
+        return;
+    }
+    
+    if (!currentEditId && password.length < 6) {
+        showAlert('Mật khẩu phải có ít nhất 6 ký tự', 'error');
+        document.getElementById('user-password').focus();
+        return;
+    }
+    
+    if (!currentEditId && password.length > 100) {
+        showAlert('Mật khẩu không được vượt quá 100 ký tự', 'error');
+        document.getElementById('user-password').focus();
+        return;
+    }
+    
+    // Full name validation
+    if (!fullName || fullName === '') {
+        showAlert('Vui lòng nhập họ tên', 'error');
+        if (fullNameEl) fullNameEl.focus();
+        return;
+    }
+    
+    if (fullName.length < 2) {
+        showAlert('Họ tên phải có ít nhất 2 ký tự', 'error');
+        if (fullNameEl) fullNameEl.focus();
+        return;
+    }
+    
+    if (fullName.length > 100) {
+        showAlert('Họ tên không được vượt quá 100 ký tự', 'error');
+        if (fullNameEl) fullNameEl.focus();
+        return;
+    }
+    
+    // Phone validation
+    if (phone && phone !== '') {
+        const cleanPhone = phone.replace(/[\s-]/g, '');
+        if (cleanPhone.length < 10 || cleanPhone.length > 11) {
+            showAlert('Số điện thoại phải có 10-11 chữ số', 'error');
+            if (phoneEl) phoneEl.focus();
+            return;
+        }
+        
+        const phoneRegex = /^[0-9]+$/;
+        if (!phoneRegex.test(cleanPhone)) {
+            showAlert('Số điện thoại chỉ được chứa chữ số', 'error');
+            if (phoneEl) phoneEl.focus();
+            return;
+        }
+        
+        if (!cleanPhone.startsWith('0')) {
+            showAlert('Số điện thoại phải bắt đầu bằng số 0', 'error');
+            if (phoneEl) phoneEl.focus();
+            return;
+        }
+    }
+    
     const formData = new FormData(e.target);
     const userData = Object.fromEntries(formData.entries());
     
@@ -1228,7 +1992,9 @@ async function handleUserSubmit(e) {
         loadUsers();
     } catch (error) {
         console.error('Error saving user:', error);
-        showAlert('Lỗi khi lưu khách hàng: ' + error.message, 'error');
+        const errorMsg = error.message || 'Lỗi không xác định';
+        showAlert('Lỗi khi lưu khách hàng: ' + errorMsg, 'error');
+        // Don't close modal on error - keep form values
     }
 }
 
@@ -1314,14 +2080,105 @@ async function loadPaymentDropdowns() {
 async function handlePaymentSubmit(e) {
     e.preventDefault();
     
+    // Validation
+    const bookingId = document.getElementById('payment-booking-id').value;
+    const paymentMethod = document.getElementById('payment-method').value;
+    const amountEl = document.getElementById('payment-amount');
+    const amount = amountEl ? amountEl.value : '';
+    const status = document.getElementById('payment-status').value;
+    const notesEl = document.getElementById('payment-notes');
+    const notes = notesEl ? notesEl.value.trim() : '';
+    
+    if (!currentEditId) {
+        if (!bookingId || bookingId === '') {
+            showAlert('Vui lòng chọn đặt vé', 'error');
+            document.getElementById('payment-booking-id').focus();
+            return;
+        }
+        
+        if (!paymentMethod || paymentMethod === '') {
+            showAlert('Vui lòng chọn phương thức thanh toán', 'error');
+            document.getElementById('payment-method').focus();
+            return;
+        }
+        
+        if (!amount || amount === '') {
+            showAlert('Vui lòng nhập số tiền', 'error');
+            if (amountEl) amountEl.focus();
+            return;
+        }
+        
+        const amountNum = parseFloat(amount);
+        if (isNaN(amountNum)) {
+            showAlert('Số tiền phải là một số hợp lệ', 'error');
+            if (amountEl) amountEl.focus();
+            return;
+        }
+        
+        if (amountNum <= 0) {
+            showAlert('Số tiền phải lớn hơn 0', 'error');
+            if (amountEl) amountEl.focus();
+            return;
+        }
+        
+        if (amountNum > 999999999999) {
+            showAlert('Số tiền quá lớn (tối đa 999,999,999,999 VNĐ)', 'error');
+            if (amountEl) amountEl.focus();
+            return;
+        }
+        
+        // Check decimal places
+        const decimalPlaces = (amount.split('.')[1] || []).length;
+        if (decimalPlaces > 2) {
+            showAlert('Số tiền chỉ được có tối đa 2 chữ số thập phân', 'error');
+            if (amountEl) amountEl.focus();
+            return;
+        }
+    } else {
+        // Edit mode: validate amount if editable
+        const amountInput = document.getElementById('payment-amount');
+        if (amountInput && !amountInput.disabled && amount) {
+            const amountNum = parseFloat(amount);
+            if (isNaN(amountNum)) {
+                showAlert('Số tiền phải là một số hợp lệ', 'error');
+                amountInput.focus();
+                return;
+            }
+            if (amountNum <= 0) {
+                showAlert('Số tiền phải lớn hơn 0', 'error');
+                amountInput.focus();
+                return;
+            }
+        }
+    }
+    
+    if (!status || status === '') {
+        showAlert('Vui lòng chọn trạng thái thanh toán', 'error');
+        document.getElementById('payment-status').focus();
+        return;
+    }
+    
+    // Notes validation
+    if (notes.length > 500) {
+        showAlert('Ghi chú không được vượt quá 500 ký tự', 'error');
+        if (notesEl) notesEl.focus();
+        return;
+    }
+    
     const formData = new FormData(e.target);
     const paymentData = Object.fromEntries(formData.entries());
     
     // Convert amount to number only if present
     if (paymentData.amount !== undefined && paymentData.amount !== '') {
         const parsed = parseFloat(paymentData.amount);
-        if (!isNaN(parsed)) paymentData.amount = parsed; else delete paymentData.amount;
-    } else {
+        if (!isNaN(parsed) && parsed > 0) {
+            paymentData.amount = parsed;
+        } else {
+            showAlert('Số tiền phải là số dương', 'error');
+            document.getElementById('payment-amount').focus();
+            return;
+        }
+    } else if (!currentEditId) {
         delete paymentData.amount;
     }
     
@@ -1347,7 +2204,9 @@ async function handlePaymentSubmit(e) {
         loadPayments();
     } catch (error) {
         console.error('Error saving payment:', error);
-        showAlert('Lỗi khi lưu thanh toán: ' + error.message, 'error');
+        const errorMsg = error.message || 'Lỗi không xác định';
+        showAlert('Lỗi khi lưu thanh toán: ' + errorMsg, 'error');
+        // Don't close modal on error - keep form values
     }
 }
 
@@ -1367,7 +2226,25 @@ async function deletePayment(paymentId) {
 // ============================================
 
 function closeModal(modalId) {
-    document.getElementById(modalId).style.display = 'none';
+    // Handle both with and without parameter
+    if (!modalId) {
+        // Try to find open modal
+        const openModal = document.querySelector('.modal[style*="block"]');
+        if (openModal) {
+            openModal.style.display = 'none';
+        }
+        return;
+    }
+    
+    const modal = document.getElementById(modalId);
+    if (modal) {
+        modal.style.display = 'none';
+        // Reset form if exists
+        const form = modal.querySelector('form');
+        if (form) {
+            form.reset();
+        }
+    }
 }
 
 function showAlert(message, type = 'info') {
@@ -1512,9 +2389,9 @@ let paymentsPerPage = 25;
 let bookingsSearchTerm = '';
 let usersSearchTerm = '';
 let paymentsSearchTerm = '';
-let bookingsFilters = { status: '' };
+let bookingsFilters = { status: '', startDate: '', endDate: '', minPrice: '', maxPrice: '' };
 let usersFilters = {};
-let paymentsFilters = { method: '', status: '' };
+let paymentsFilters = { method: '', status: '', startDate: '', endDate: '', minAmount: '', maxAmount: '' };
 let bookingsSort = 'bookingDate-desc';
 let usersSort = 'createdAt-desc';
 let paymentsSort = 'createdAt-desc';
@@ -1522,16 +2399,29 @@ let paymentsSort = 'createdAt-desc';
 // ========== BOOKINGS ==========
 
 function handleBookingsSearch(event) {
+    // Always update search term to preserve input
+    bookingsSearchTerm = event.target.value.toLowerCase();
+    
     if (event.key === 'Enter' || event.target.value === '') {
-        bookingsSearchTerm = event.target.value.toLowerCase();
         bookingsCurrentPage = 1;
         displayBookings();
     }
+    // Keep input value
 }
 
 function filterBookings() {
-    const statusFilter = document.getElementById('bookings-filter-status').value;
-    bookingsFilters.status = statusFilter;
+    const statusFilter = document.getElementById('bookings-filter-status');
+    const startDate = document.getElementById('bookings-start-date');
+    const endDate = document.getElementById('bookings-end-date');
+    const minPrice = document.getElementById('bookings-min-price');
+    const maxPrice = document.getElementById('bookings-max-price');
+    
+    bookingsFilters.status = statusFilter ? statusFilter.value : '';
+    bookingsFilters.startDate = startDate ? startDate.value : '';
+    bookingsFilters.endDate = endDate ? endDate.value : '';
+    bookingsFilters.minPrice = minPrice ? minPrice.value : '';
+    bookingsFilters.maxPrice = maxPrice ? maxPrice.value : '';
+    
     bookingsCurrentPage = 1;
     displayBookings();
 }
@@ -1576,6 +2466,30 @@ function getFilteredBookings() {
         // Status filter
         if (bookingsFilters.status && booking.bookingStatus !== bookingsFilters.status) {
             return false;
+        }
+        
+        // Date range filter
+        if (bookingsFilters.startDate || bookingsFilters.endDate) {
+            const bookingDate = new Date(booking.bookingDate || booking.createdAt);
+            if (bookingsFilters.startDate) {
+                const startDate = new Date(bookingsFilters.startDate);
+                if (bookingDate < startDate) return false;
+            }
+            if (bookingsFilters.endDate) {
+                const endDate = new Date(bookingsFilters.endDate + 'T23:59:59');
+                if (bookingDate > endDate) return false;
+            }
+        }
+        
+        // Price range filter
+        const bookingPrice = parseFloat(booking.totalAmount || 0);
+        if (bookingsFilters.minPrice) {
+            const minPrice = parseFloat(bookingsFilters.minPrice);
+            if (bookingPrice < minPrice) return false;
+        }
+        if (bookingsFilters.maxPrice) {
+            const maxPrice = parseFloat(bookingsFilters.maxPrice);
+            if (bookingPrice > maxPrice) return false;
         }
         
         return true;
@@ -1629,6 +2543,7 @@ function displayBookings() {
     } else {
         tbody.innerHTML = paginated.map(booking => `
             <tr>
+                <td><input type="checkbox" class="booking-checkbox" value="${booking.bookingId}" onchange="updateBulkActionsBookings()"></td>
                 <td>${booking.bookingReference || 'N/A'}</td>
                 <td>${booking.userName || booking.user?.fullName || 'N/A'}</td>
                 <td>${booking.flight?.flightNumber || booking.route || 'N/A'}</td>
@@ -1672,11 +2587,18 @@ function displayBookings() {
 // ========== USERS ==========
 
 function handleUsersSearch(event) {
+    // Always update search term to preserve input
+    const searchValue = event.target.value;
+    usersSearchTerm = searchValue.toLowerCase();
+    
+    // Store original value for restoration
+    sessionStorage.setItem('users-search-value', searchValue);
+    
     if (event.key === 'Enter' || event.target.value === '') {
-        usersSearchTerm = event.target.value.toLowerCase();
         usersCurrentPage = 1;
         displayUsers();
     }
+    // Input value is already preserved in the input field
 }
 
 function sortUsers() {
@@ -1750,7 +2672,7 @@ function displayUsers() {
     if (!allUsersData || allUsersData.length === 0) {
         const tbody = document.getElementById('users-table-body');
         if (tbody) {
-            tbody.innerHTML = '<tr><td colspan="8" class="empty-state"><i class="fas fa-users"></i><h3>Chưa có khách hàng nào</h3></td></tr>';
+            tbody.innerHTML = '<tr><td colspan="9" class="empty-state"><i class="fas fa-users"></i><h3>Chưa có khách hàng nào</h3></td></tr>';
         }
         return;
     }
@@ -1768,10 +2690,11 @@ function displayUsers() {
     }
     
     if (filtered.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="8" class="empty-state"><i class="fas fa-users"></i><h3>Chưa có khách hàng nào</h3></td></tr>';
+        tbody.innerHTML = '<tr><td colspan="9" class="empty-state"><i class="fas fa-users"></i><h3>Chưa có khách hàng nào</h3></td></tr>';
     } else {
         tbody.innerHTML = paginated.map(user => `
             <tr>
+                <td><input type="checkbox" class="user-checkbox" value="${user.userId}" onchange="updateBulkActionsUsers()"></td>
                 <td>${user.userId}</td>
                 <td>${user.username}</td>
                 <td>${user.email}</td>
@@ -1813,16 +2736,35 @@ function displayUsers() {
 // ========== PAYMENTS ==========
 
 function handlePaymentsSearch(event) {
+    // Always update search term to preserve input
+    const searchValue = event.target.value;
+    paymentsSearchTerm = searchValue.toLowerCase();
+    
+    // Store original value for restoration
+    sessionStorage.setItem('payments-search-value', searchValue);
+    
     if (event.key === 'Enter' || event.target.value === '') {
-        paymentsSearchTerm = event.target.value.toLowerCase();
         paymentsCurrentPage = 1;
         displayPayments();
     }
+    // Input value is already preserved in the input field
 }
 
 function filterPayments() {
-    paymentsFilters.method = document.getElementById('payments-filter-method').value;
-    paymentsFilters.status = document.getElementById('payments-filter-status').value;
+    const methodFilter = document.getElementById('payments-filter-method');
+    const statusFilter = document.getElementById('payments-filter-status');
+    const startDate = document.getElementById('payments-start-date');
+    const endDate = document.getElementById('payments-end-date');
+    const minAmount = document.getElementById('payments-min-amount');
+    const maxAmount = document.getElementById('payments-max-amount');
+    
+    paymentsFilters.method = methodFilter ? methodFilter.value : '';
+    paymentsFilters.status = statusFilter ? statusFilter.value : '';
+    paymentsFilters.startDate = startDate ? startDate.value : '';
+    paymentsFilters.endDate = endDate ? endDate.value : '';
+    paymentsFilters.minAmount = minAmount ? minAmount.value : '';
+    paymentsFilters.maxAmount = maxAmount ? maxAmount.value : '';
+    
     paymentsCurrentPage = 1;
     displayPayments();
 }
@@ -1874,6 +2816,30 @@ function getFilteredPayments() {
             return false;
         }
         
+        // Date range filter
+        if (paymentsFilters.startDate || paymentsFilters.endDate) {
+            const paymentDate = new Date(payment.createdAt || payment.paymentDate);
+            if (paymentsFilters.startDate) {
+                const startDate = new Date(paymentsFilters.startDate);
+                if (paymentDate < startDate) return false;
+            }
+            if (paymentsFilters.endDate) {
+                const endDate = new Date(paymentsFilters.endDate + 'T23:59:59');
+                if (paymentDate > endDate) return false;
+            }
+        }
+        
+        // Amount range filter
+        const paymentAmount = parseFloat(payment.amount || 0);
+        if (paymentsFilters.minAmount) {
+            const minAmount = parseFloat(paymentsFilters.minAmount);
+            if (paymentAmount < minAmount) return false;
+        }
+        if (paymentsFilters.maxAmount) {
+            const maxAmount = parseFloat(paymentsFilters.maxAmount);
+            if (paymentAmount > maxAmount) return false;
+        }
+        
         return true;
     });
     
@@ -1903,7 +2869,7 @@ function displayPayments() {
     if (!allPaymentsData || allPaymentsData.length === 0) {
         const tbody = document.getElementById('payments-table-body');
         if (tbody) {
-            tbody.innerHTML = '<tr><td colspan="7" class="empty-state"><i class="fas fa-credit-card"></i><h3>Chưa có thanh toán nào</h3></td></tr>';
+            tbody.innerHTML = '<tr><td colspan="8" class="empty-state"><i class="fas fa-credit-card"></i><h3>Chưa có thanh toán nào</h3></td></tr>';
         }
         return;
     }
@@ -1921,10 +2887,11 @@ function displayPayments() {
     }
     
     if (filtered.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="7" class="empty-state"><i class="fas fa-credit-card"></i><h3>Chưa có thanh toán nào</h3></td></tr>';
+        tbody.innerHTML = '<tr><td colspan="8" class="empty-state"><i class="fas fa-credit-card"></i><h3>Chưa có thanh toán nào</h3></td></tr>';
     } else {
         tbody.innerHTML = paginated.map(payment => `
             <tr>
+                <td><input type="checkbox" class="payment-checkbox" value="${payment.paymentId}" onchange="updateBulkActionsPayments()"></td>
                 <td>${payment.paymentId}</td>
                 <td>${payment.transactionId || payment.paymentReference || 'N/A'}</td>
                 <td>${getPaymentMethodText(payment.paymentMethod)}</td>

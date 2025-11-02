@@ -110,8 +110,8 @@ class UsersAPI {
 // ============================================
 
 class FlightsAPI {
-    async getFlights() {
-        return await apiCall('/admin/Flights');
+    async getFlights(page = 1, pageSize = 1000) {
+        return await apiCall(`/admin/Flights?page=${page}&pageSize=${pageSize}`);
     }
 
     async getFlightById(flightId) {
@@ -330,6 +330,48 @@ class PaymentsAPI {
     }
 }
 
+// ============================================
+// NOTIFICATIONS API
+// ============================================
+
+class NotificationsAPI {
+    async getUserNotifications(userId, page = 1, pageSize = 20) {
+        return await apiCall(`/Notification/user/${userId}?page=${page}&pageSize=${pageSize}`, { method: 'GET' });
+    }
+    
+    async markAsRead(notificationId, userId) {
+        return await apiCall(`/Notification/${notificationId}/read?userId=${userId}`, {
+            method: 'POST'
+        });
+    }
+    
+    async getUnreadCount(userId) {
+        return await apiCall(`/Notification/user/${userId}/unread-count`, { method: 'GET' });
+    }
+    
+    // Get all notifications for all users (admin view)
+    async getAllNotificationsForAdmin(page = 1, pageSize = 50) {
+        // This requires getting all users first, then their notifications
+        // For now, we'll implement a helper that gets all users and aggregates
+        const users = await new UsersAPI().getUsers();
+        const allNotifications = [];
+        for (const user of users) {
+            try {
+                const notifications = await this.getUserNotifications(user.userId, 1, 1000);
+                allNotifications.push(...notifications);
+            } catch (error) {
+                console.error(`Error getting notifications for user ${user.userId}:`, error);
+            }
+        }
+        // Sort by CreatedAt descending
+        allNotifications.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+        // Paginate
+        const start = (page - 1) * pageSize;
+        const end = start + pageSize;
+        return allNotifications.slice(start, end);
+    }
+}
+
 // Auto-Approval API
 class AutoApprovalAPI {
     async getAutoApprovalStats() {
@@ -357,6 +399,7 @@ const api = {
     airports: new AirportsAPI(),
     aircraftTypes: new AircraftTypesAPI(),
     payments: new PaymentsAPI(),
+    notifications: new NotificationsAPI(),
     
     // Alias functions for backward compatibility
     login: (username, password) => new AuthAPI().login(username, password),
@@ -431,6 +474,12 @@ const api = {
     createPayment: (data) => new PaymentsAPI().createPayment(data),
     updatePayment: (id, data) => new PaymentsAPI().updatePayment(id, data),
     deletePayment: (id) => new PaymentsAPI().deletePayment(id),
+    
+    // Notifications
+    getUserNotifications: (userId, page, pageSize) => new NotificationsAPI().getUserNotifications(userId, page, pageSize),
+    markNotificationAsRead: (notificationId, userId) => new NotificationsAPI().markAsRead(notificationId, userId),
+    getUnreadCount: (userId) => new NotificationsAPI().getUnreadCount(userId),
+    getAllNotificationsForAdmin: (page, pageSize) => new NotificationsAPI().getAllNotificationsForAdmin(page, pageSize),
     
     // Auto-Approval
     getAutoApprovalStats: () => new AutoApprovalAPI().getAutoApprovalStats(),
