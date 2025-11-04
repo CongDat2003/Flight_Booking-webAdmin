@@ -184,6 +184,22 @@
                     </div>
                 </div>
 
+                <!-- Status Tabs for Bookings -->
+                <div id="bookings-status-tabs" class="detail-tabs" style="margin-bottom:16px;">
+                    <button class="tab-btn active" data-status="">
+                        <i class="fas fa-list"></i> Tất cả
+                    </button>
+                    <button class="tab-btn" data-status="PENDING">
+                        <i class="fas fa-hourglass-half"></i> Chờ xử lý
+                    </button>
+                    <button class="tab-btn" data-status="CONFIRMED">
+                        <i class="fas fa-check-circle"></i> Đã xác nhận
+                    </button>
+                    <button class="tab-btn" data-status="CANCELLED">
+                        <i class="fas fa-times-circle"></i> Đã hủy
+                    </button>
+                </div>
+
                 <!-- Stats Grid -->
                 <div class="stats-grid">
                     <div class="stat-card">
@@ -624,6 +640,25 @@
                         <button class="btn btn-success" onclick="showAddFlightModal()">➕ Add Flight</button>
                         <button class="btn btn-primary" onclick="loadFlights()">🔄 Refresh</button>
                     </div>
+                </div>
+
+                <!-- Status Tabs for Flights -->
+                <div id="flights-status-tabs" class="detail-tabs" style="margin-bottom:16px;">
+                    <button class="tab-btn active" data-status="">
+                        <i class="fas fa-list"></i> Tất cả
+                    </button>
+                    <button class="tab-btn" data-status="SCHEDULED">
+                        <i class="fas fa-calendar-check"></i> Đã lên lịch
+                    </button>
+                    <button class="tab-btn" data-status="DELAYED">
+                        <i class="fas fa-clock"></i> Bị hoãn
+                    </button>
+                    <button class="tab-btn" data-status="CANCELLED">
+                        <i class="fas fa-times-circle"></i> Đã hủy
+                    </button>
+                    <button class="tab-btn" data-status="COMPLETED">
+                        <i class="fas fa-check-double"></i> Đã hoàn thành
+                    </button>
                 </div>
 
                 <!-- Stats Grid -->
@@ -1263,6 +1298,31 @@
         </main>
     </div>
 
+    <!-- Seat Manager Modal -->
+    <div id="seatManagerModal" class="modal" style="display:none">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Quản lí ghế - Flight <span id="seatManagerFlightNumber"></span></h3>
+                <span class="close" id="seatManagerClose">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="seat-toolbar">
+                    <select id="seatFilterClass">
+                        <option value="">Tất cả hạng</option>
+                        <option value="FIRST_CLASS">First</option>
+                        <option value="BUSINESS">Business</option>
+                        <option value="ECONOMY">Economy</option>
+                    </select>
+                    <button class="btn btn-primary" id="bulkSetAvailable"><i class="fas fa-lock-open"></i> Mở ghế</button>
+                    <button class="btn btn-warning" id="bulkSetUnavailable"><i class="fas fa-lock"></i> Khóa ghế</button>
+                    <button class="btn btn-secondary" id="bulkSetExtraFee"><i class="fas fa-dollar-sign"></i> Đặt phụ phí</button>
+                    <button class="btn" id="regenerateSeats"><i class="fas fa-th"></i> Tạo lại ghế</button>
+                </div>
+                <div id="seatGrid" class="seat-grid"></div>
+            </div>
+        </div>
+    </div>
+
     <!-- Modals -->
     <div id="booking-detail-modal" class="modal">
         <div class="modal-content">
@@ -1495,6 +1555,7 @@
     <script src="js/api-checker.js"></script>
     <script src="js/admin.js"></script>
     <script src="js/flights.js"></script>
+    <script src="js/seats.js"></script>
     <script src="js/chat.js"></script>
     <script src="js/admin-features.js"></script>
 </body>

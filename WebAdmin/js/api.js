@@ -2,11 +2,26 @@
 // FLIGHT BOOKING ADMIN - API CALLS (FULL VERSION)
 // ============================================
 
-const API_BASE_URL = 'http://localhost:501/api';
+const API_BASE_URL = 'http://192.168.10.9:501/api';
+
+// Lightweight 30s cache and in-flight de-dup for GET requests
+const __apiCache = new Map();
+const __inflight = new Map();
 
 // Helper function for API calls
 async function apiCall(endpoint, options = {}) {
     try {
+        const method = (options.method || 'GET').toUpperCase();
+        const key = `${method}:${endpoint}`;
+        if (method === 'GET') {
+            // Serve from cache if fresh
+            const cached = __apiCache.get(key);
+            if (cached && Date.now() - cached.t < 30000) {
+                return cached.v;
+            }
+            // De-duplicate concurrent GETs
+            if (__inflight.has(key)) return await __inflight.get(key);
+        }
         const response = await fetch(`${API_BASE_URL}${endpoint}`, {
             ...options,
             headers: {
@@ -23,9 +38,14 @@ async function apiCall(endpoint, options = {}) {
         }
 
         if (response.status === 204) return true;
-        const text = await response.text();
+        const textPromise = response.text();
+        if (method === 'GET') __inflight.set(key, textPromise);
+        const text = await textPromise;
+        if (method === 'GET') __inflight.delete(key);
         if (!text) return true;
-        return JSON.parse(text);
+        const parsed = JSON.parse(text);
+        if (method === 'GET') __apiCache.set(key, { t: Date.now(), v: parsed });
+        return parsed;
     } catch (error) {
         console.error('API Error:', error);
         throw error;
@@ -358,7 +378,11 @@ class NotificationsAPI {
         for (const user of users) {
             try {
                 const notifications = await this.getUserNotifications(user.userId, 1, 1000);
-                allNotifications.push(...notifications);
+                // Inject userId for admin mapping later
+                const withUser = Array.isArray(notifications)
+                    ? notifications.map(n => ({ ...n, userId: user.userId }))
+                    : [];
+                allNotifications.push(...withUser);
             } catch (error) {
                 console.error(`Error getting notifications for user ${user.userId}:`, error);
             }
@@ -386,6 +410,48 @@ class AutoApprovalAPI {
 }
 
 // ============================================
+// CHAT API
+// ============================================
+
+class ChatAPI {
+    async sendMessage(userId, content, senderType = "USER") {
+        return await apiCall('/Chat/send', {
+            method: 'POST',
+            body: JSON.stringify({ userId, content, senderType })
+        });
+    }
+    
+    async getConversation(userId = null) {
+        const url = userId ? `/Chat/conversation?userId=${userId}` : '/Chat/conversation';
+        return await apiCall(url);
+    }
+    
+    async markAsRead(messageId) {
+        return await apiCall(`/Chat/${messageId}/read`, { method: 'PUT' });
+    }
+    
+    async getUnreadMessages(userId = null) {
+        const url = userId ? `/Chat/unread?userId=${userId}` : '/Chat/unread';
+        return await apiCall(url);
+    }
+    
+    async getUnreadMessagesForAdmin() {
+        return await apiCall('/Chat/admin/unread');
+    }
+    
+    async markMessagesAsRead(userId) {
+        return await apiCall(`/Chat/mark-read/${userId}`, { method: 'POST' });
+    }
+    
+    async sendAdminReply(userId, content) {
+        return await apiCall('/Chat/admin/reply', {
+            method: 'POST',
+            body: JSON.stringify({ userId, content })
+        });
+    }
+}
+
+// ============================================
 // EXPORT API INSTANCES
 // ============================================
 
@@ -400,6 +466,7 @@ const api = {
     aircraftTypes: new AircraftTypesAPI(),
     payments: new PaymentsAPI(),
     notifications: new NotificationsAPI(),
+    chat: new ChatAPI(),
     
     // Alias functions for backward compatibility
     login: (username, password) => new AuthAPI().login(username, password),

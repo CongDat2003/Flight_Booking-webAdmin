@@ -822,6 +822,21 @@ async function loadBookings() {
         
         // Restore search/filter values
         restoreBookingsFilters();
+
+        // Bind status tabs for bookings (once DOM available)
+        const bookingTabs = document.querySelectorAll('#bookings-status-tabs .tab-btn');
+        const statusFilter = document.getElementById('bookings-filter-status');
+        bookingTabs.forEach(tab => {
+            tab.addEventListener('click', () => {
+                bookingTabs.forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
+                const status = tab.getAttribute('data-status') || '';
+                bookingsFilters.status = status;
+                if (statusFilter) statusFilter.value = status;
+                bookingsCurrentPage = 1;
+                displayBookings();
+            });
+        });
         
         hideLoading('bookings-page');
     } catch (error) {
@@ -2903,12 +2918,21 @@ function displayPayments() {
                         <button class="action-btn view" onclick="viewPaymentDetail(${payment.paymentId})" title="Xem chi tiết">
                             <i class="fas fa-eye"></i>
                         </button>
+                        ${payment.status === 'PENDING' ? `
+                        <button class="action-btn approve" onclick="approvePayment(${payment.paymentId})" title="Duyệt">
+                            <i class="fas fa-check"></i>
+                        </button>
+                        <button class="action-btn cancel" onclick="cancelPayment(${payment.paymentId})" title="Hủy">
+                            <i class="fas fa-times"></i>
+                        </button>
+                        ` : `
                         <button class="action-btn edit" onclick="showEditPaymentModal(${payment.paymentId})" title="Chỉnh sửa">
                             <i class="fas fa-edit"></i>
                         </button>
                         <button class="action-btn delete" onclick="showDeleteConfirm('Bạn có chắc chắn muốn xóa thanh toán này?', () => deletePayment(${payment.paymentId}))" title="Xóa">
                             <i class="fas fa-trash"></i>
                         </button>
+                        `}
                     </div>
                 </td>
             </tr>
@@ -2924,6 +2948,29 @@ function displayPayments() {
     document.getElementById('payments-page-next').disabled = paymentsCurrentPage >= totalPages || totalPages === 0;
     document.getElementById('payments-page-first').disabled = paymentsCurrentPage === 1;
     document.getElementById('payments-page-last').disabled = paymentsCurrentPage >= totalPages || totalPages === 0;
+}
+
+// Payment actions for PENDING status
+async function approvePayment(paymentId) {
+    try {
+        if (!confirm('Xác nhận duyệt thanh toán này?')) return;
+        await api.updatePayment(paymentId, { status: 'SUCCESS' });
+        showToast('Đã duyệt thanh toán', 'success');
+        await loadPayments();
+    } catch (err) {
+        showToast('Duyệt thanh toán thất bại: ' + (err?.message || ''), 'error');
+    }
+}
+
+async function cancelPayment(paymentId) {
+    try {
+        if (!confirm('Xác nhận hủy thanh toán này?')) return;
+        await api.updatePayment(paymentId, { status: 'FAILED' });
+        showToast('Đã hủy thanh toán', 'success');
+        await loadPayments();
+    } catch (err) {
+        showToast('Hủy thanh toán thất bại: ' + (err?.message || ''), 'error');
+    }
 }
 
 // ========== Helper Functions ==========

@@ -27,6 +27,22 @@ function initFlightsPage() {
         });
     }
 
+    // Tabs binding
+    const tabs = document.querySelectorAll('#flights-status-tabs .tab-btn');
+    tabs.forEach(tab => {
+        tab.addEventListener('click', () => {
+            tabs.forEach(t => t.classList.remove('active'));
+            tab.classList.add('active');
+            const status = tab.getAttribute('data-status') || '';
+            flightsFilters.status = status;
+            // Sync dropdown if present
+            if (statusFilter) statusFilter.value = status;
+            flightsCurrentPage = 1;
+            applyFlightsFilters();
+            renderFlightsTable();
+        });
+    });
+
     loadFlights();
 }
 
@@ -178,6 +194,9 @@ function renderFlightsTable() {
             <td>
                 <div class="action-buttons">
                     <button class="action-btn view" onclick="viewFlightDetail(${f.flightId})">👁️</button>
+                    <button class="action-btn" title="Quản lí ghế" onclick="openSeatManager(${f.flightId}, '${String.prototype.replace.call(f.flightNumber || '', /'/g, "\\'")}')">
+                        <i class="fas fa-chair"></i> Quản lí ghế
+                    </button>
                     <button class="action-btn edit" onclick="showEditFlightModal(${f.flightId})">✏️</button>
                     <button class="action-btn delete" onclick="confirmDeleteFlight(${f.flightId})">🗑️</button>
                 </div>

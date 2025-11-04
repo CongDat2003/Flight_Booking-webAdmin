@@ -113,3 +113,45 @@ if (document.readyState === 'loading') {
 } else {
     checkAuth();
 }
+
+// ===== UX: Toggle show/hide password & Remember Me =====
+document.addEventListener('DOMContentLoaded', function() {
+    // Toggle password
+    const toggleBtn = document.querySelector('.toggle-password');
+    const pwdInput = document.getElementById('password');
+    if (toggleBtn && pwdInput) {
+        toggleBtn.addEventListener('click', () => {
+            const type = pwdInput.getAttribute('type') === 'password' ? 'text' : 'password';
+            pwdInput.setAttribute('type', type);
+            toggleBtn.innerHTML = type === 'password'
+                ? '<i class="fas fa-eye"></i>'
+                : '<i class="fas fa-eye-slash"></i>';
+        });
+    }
+
+    // Remember Me: prefill
+    const savedUsername = localStorage.getItem('adminRememberUsername') || '';
+    if (savedUsername) {
+        const usernameEl = document.getElementById('username');
+        const rememberEl = document.getElementById('rememberMe');
+        if (usernameEl) usernameEl.value = savedUsername;
+        if (rememberEl) rememberEl.checked = true;
+    }
+});
+
+// Hook into existing handleLogin to store username if needed
+const __origHandleLogin = handleLogin;
+handleLogin = async function(e) {
+    await __origHandleLogin(e);
+    try {
+        const rememberEl = document.getElementById('rememberMe');
+        const usernameEl = document.getElementById('username');
+        if (rememberEl && usernameEl) {
+            if (rememberEl.checked) {
+                localStorage.setItem('adminRememberUsername', usernameEl.value || '');
+            } else {
+                localStorage.removeItem('adminRememberUsername');
+            }
+        }
+    } catch (_) {}
+};

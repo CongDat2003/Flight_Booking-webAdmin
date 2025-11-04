@@ -7,64 +7,82 @@ async function loadChatConversations() {
     try {
         showLoading('customer-support-page');
         
-        // Get all conversations instead of just unread
-        // Use GetConversation with GetAllConversations endpoint if available
-        let allConversations = [];
-        
+        // 1) Lấy toàn bộ tin nhắn (để hiển thị cả cuộc trò chuyện do ADMIN chủ động mở)
+        // 2) Kết hợp với danh sách unread để tính badge
+        let allMessages = [];
+        let unreadForAdmin = [];
+
         try {
-            // Get unread messages for admin - this will return empty array if error
-            const response = await apiCall('/Chat/admin/unread');
-            
-            // Handle response format
-            if (Array.isArray(response)) {
-                allConversations = response;
-            } else if (response && response.conversations) {
-                allConversations = response.conversations;
-            } else {
-                allConversations = [];
+            const [allConvRes, unreadRes] = await Promise.all([
+                apiCall('/Chat/conversation'), // không truyền userId => trả tất cả messages
+                apiCall('/Chat/admin/unread').catch(() => [])
+            ]);
+
+            if (allConvRes && allConvRes.messages) {
+                allMessages = allConvRes.messages;
+            } else if (Array.isArray(allConvRes)) {
+                allMessages = allConvRes;
             }
+
+            unreadForAdmin = Array.isArray(unreadRes) ? unreadRes : [];
         } catch (err) {
             console.warn('Error loading conversations:', err);
-            // Continue with empty array - show empty state
-            allConversations = [];
+            allMessages = [];
+            unreadForAdmin = [];
         }
         
         const conversations = new Map();
         
-        // Group messages/conversations by user
-        (allConversations || []).forEach(item => {
-            // Handle different response formats
-            const userId = item.userId;
-            const userName = item.userName || item.user?.fullName || 'Khách hàng';
-            const userEmail = item.userEmail || item.user?.email || '';
-            const lastMessage = item.lastMessage || item.messages?.[0]?.content || item.content || 'Chưa có tin nhắn';
-            const lastMessageTime = item.lastMessageAt ? new Date(item.lastMessageAt) : 
-                                   (item.lastMessageTime ? new Date(item.lastMessageTime) :
-                                   (item.createdAt ? new Date(item.createdAt) : new Date()));
-            const unreadCount = item.unreadCount || 0;
-            
-            if (userId && !conversations.has(userId)) {
+        // Group theo userId từ allMessages
+        (allMessages || []).forEach(m => {
+            const userId = m.userId;
+            if (!userId) return; // bỏ qua tin không gắn user
+
+            const userName = m.userName || m.user?.fullName || (m.senderType === 'ADMIN' ? 'Admin' : 'Khách hàng');
+            const userEmail = m.userEmail || m.user?.email || '';
+            const msgTime = new Date(m.createdAt || m.CreatedAt || Date.now());
+            const content = m.content || m.Content || '';
+
+            if (!conversations.has(userId)) {
                 conversations.set(userId, {
-                    userId: userId,
-                    userName: userName,
-                    userEmail: userEmail,
-                    lastMessage: lastMessage,
-                    lastMessageTime: lastMessageTime,
-                    unreadCount: unreadCount,
-                    messages: item.messages || [item]
+                    userId,
+                    userName,
+                    userEmail,
+                    lastMessage: content,
+                    lastMessageTime: msgTime,
+                    unreadCount: 0,
+                    messages: []
                 });
-            } else if (userId) {
+            } else {
                 const conv = conversations.get(userId);
-                conv.unreadCount += unreadCount;
-                if (lastMessageTime > conv.lastMessageTime) {
-                    conv.lastMessageTime = lastMessageTime;
-                    conv.lastMessage = lastMessage;
+                if (msgTime > conv.lastMessageTime) {
+                    conv.lastMessageTime = msgTime;
+                    conv.lastMessage = content;
                 }
+            }
+        });
+
+        // Cộng dồn badge unread từ danh sách unread dành cho admin
+        (unreadForAdmin || []).forEach(u => {
+            const userId = u.userId;
+            if (!userId) return;
+            if (!conversations.has(userId)) {
+                conversations.set(userId, {
+                    userId,
+                    userName: u.userName || 'Khách hàng',
+                    userEmail: u.userEmail || '',
+                    lastMessage: u.content || 'Tin nhắn mới',
+                    lastMessageTime: new Date(u.createdAt || Date.now()),
+                    unreadCount: 1,
+                    messages: []
+                });
+            } else {
+                conversations.get(userId).unreadCount += 1;
             }
         });
         
         // Update stats
-        updateSupportStats(Array.from(conversations.values()), allConversations || []);
+        updateSupportStats(Array.from(conversations.values()), unreadForAdmin || []);
         
         // Render conversations
         renderConversations(Array.from(conversations.values()));
@@ -82,7 +100,7 @@ function apiCall(endpoint, options = {}) {
     // Chỉ khai báo nếu chưa có từ config.js
     var apiBaseUrl = (typeof window !== 'undefined' && window.API_BASE_URL) 
         ? window.API_BASE_URL 
-        : (typeof API_BASE_URL !== 'undefined' ? API_BASE_URL : 'http://192.168.10.73:501/api');
+        : (typeof API_BASE_URL !== 'undefined' ? API_BASE_URL : 'http://192.168.10.9:501/api');
     
     const fullUrl = `${apiBaseUrl}${endpoint}`;
     console.log(`[Chat API] ${options.method || 'GET'} ${fullUrl}`);
@@ -115,9 +133,9 @@ function apiCall(endpoint, options = {}) {
 
 function updateSupportStats(conversations, unreadMessages) {
     const totalConversations = conversations.length;
-    // Count unread messages - check status === 'SENT' or !isRead
+    // Count unread messages - check !isRead
     const unreadCount = (unreadMessages || []).filter(m => 
-        m.senderType === 'USER' && (m.status === 'SENT' || !m.isRead)
+        m.senderType === 'USER' && !m.isRead
     ).length;
     const pendingReplies = conversations.filter(c => c.unreadCount > 0).length;
     const responseRate = totalConversations > 0 ? 
@@ -147,7 +165,7 @@ function renderConversations(conversations) {
     }
     
     container.innerHTML = conversations.map(conv => `
-        <div class="conversation-item" onclick="selectConversation(${conv.userId || 'null'}, ${JSON.stringify(conv.userName || 'Khách hàng')})" data-user-id="${conv.userId}" data-email="${conv.userEmail || ''}">
+        <div class="conversation-item" data-user-id="${conv.userId || ''}" data-user-name="${escapeHtmlAttribute(conv.userName || 'Khách hàng')}" data-email="${escapeHtmlAttribute(conv.userEmail || '')}">
             <div class="conversation-item-header">
                 <span class="conversation-user-name">${escapeHtml(conv.userName || 'Khách hàng')}</span>
                 <span class="conversation-time">${formatTime(conv.lastMessageTime)}</span>
@@ -156,16 +174,35 @@ function renderConversations(conversations) {
             ${conv.unreadCount > 0 ? `<span class="conversation-badge">${conv.unreadCount}</span>` : ''}
         </div>
     `).join('');
+    
+    // Add event listeners after rendering
+    container.querySelectorAll('.conversation-item').forEach(item => {
+        item.addEventListener('click', function(e) {
+            e.preventDefault();
+            const userId = this.dataset.userId;
+            const userName = this.dataset.userName || 'Khách hàng';
+            if (userId) {
+                selectConversation(parseInt(userId), userName);
+            }
+        });
+    });
 }
 
 async function selectConversation(userId, userName) {
+    if (!userId) {
+        console.error('Invalid userId:', userId);
+        return;
+    }
+    
     currentChatUserId = userId;
     
     // Update active state
     document.querySelectorAll('.conversation-item').forEach(item => {
         item.classList.remove('active');
+        if (item.dataset.userId == userId) {
+            item.classList.add('active');
+        }
     });
-    event.currentTarget?.closest('.conversation-item')?.classList.add('active');
     
     // Show chat window
     const noConvEl = document.getElementById('no-conversation-selected');
@@ -395,4 +432,14 @@ function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
+}
+
+function escapeHtmlAttribute(text) {
+    if (!text) return '';
+    return String(text)
+        .replace(/&/g, '&amp;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#x27;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
 }

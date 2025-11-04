@@ -178,7 +178,11 @@ function updateNotificationsStats(notifications) {
 
 function handleNotificationsSearch(event) {
     if (event.key === 'Enter' || event.target.value === '') {
-        notificationsSearchTerm = event.target.value.toLowerCase();
+        const sanitized = sanitizeString(event.target.value, 200);
+        if (sanitized.length !== event.target.value.length) {
+            showWarning('Từ khóa tìm kiếm quá dài, đã được rút gọn');
+        }
+        notificationsSearchTerm = sanitized.toLowerCase();
         notificationsCurrentPage = 1;
         displayNotifications();
     }
@@ -197,7 +201,12 @@ function sortNotifications() {
 }
 
 function changeNotificationsPerPage() {
-    notificationsPerPage = parseInt(document.getElementById('notifications-per-page').value);
+    const raw = parseInt(document.getElementById('notifications-per-page').value);
+    const allowed = [10, 25, 50, 100];
+    notificationsPerPage = allowed.includes(raw) ? raw : 25;
+    if (!allowed.includes(raw)) {
+        showWarning('Số bản ghi mỗi trang không hợp lệ, dùng mặc định 25');
+    }
     notificationsCurrentPage = 1;
     displayNotifications();
 }
@@ -214,6 +223,13 @@ function changeNotificationsPage(page) {
         notificationsCurrentPage = 1;
     } else if (page === 999) {
         notificationsCurrentPage = totalPages;
+    } else if (typeof page === 'number') {
+        const err = validateNumberInRange(page, 1, Math.max(1, totalPages), 'Trang');
+        if (err) {
+            showWarning(err);
+        } else {
+            notificationsCurrentPage = page;
+        }
     }
     
     displayNotifications();
@@ -411,14 +427,10 @@ async function loadReports() {
             showWarning('Không thể tải biểu đồ: ' + err.message);
         });
         
-        // Load top data for tabs (only if tabs are visible)
-        // These will load when user clicks on the tabs
-        // But we can preload them in background
-        Promise.all([
-            loadTopCustomers().catch(err => console.error('Error loading top customers:', err)),
-            loadTopRoutes().catch(err => console.error('Error loading top routes:', err)),
-            loadTopAirlines().catch(err => console.error('Error loading top airlines:', err))
-        ]).catch(err => console.error('Error loading top data:', err));
+        // Preload 3 tab Top (hành vi cũ) nhưng chạy nền có trễ nhẹ để không chặn render
+        setTimeout(() => loadTopCustomers().catch(err => console.error('Error loading top customers:', err)), 200);
+        setTimeout(() => loadTopRoutes().catch(err => console.error('Error loading top routes:', err)), 400);
+        setTimeout(() => loadTopAirlines().catch(err => console.error('Error loading top airlines:', err)), 600);
         
         hideLoading('reports-page');
         showSuccess('Đã tải báo cáo thành công');
@@ -1091,10 +1103,6 @@ async function loadTopRoutes() {
     } catch (error) {
         console.error('Error loading top routes:', error);
         showError('Lỗi khi tải Top Tuyến đường: ' + error.message);
-        const tbody = document.getElementById('report-routes-body');
-        if (tbody) {
-            tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; padding:20px; color:red;">Lỗi khi tải dữ liệu</td></tr>';
-        }
     }
 }
 
@@ -1164,10 +1172,6 @@ async function loadTopAirlines() {
     } catch (error) {
         console.error('Error loading top airlines:', error);
         showError('Lỗi khi tải Top Hãng bay: ' + error.message);
-        const tbody = document.getElementById('report-airlines-body');
-        if (tbody) {
-            tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; padding:20px; color:red;">Lỗi khi tải dữ liệu</td></tr>';
-        }
     }
 }
 
@@ -1197,10 +1201,8 @@ function applyReportFilter() {
         reportStartDate = startDateInput ? startDateInput.value : null;
         reportEndDate = endDateInput ? endDateInput.value : null;
         
-        if (!reportStartDate || !reportEndDate) {
-            showWarning('Vui lòng chọn đầy đủ ngày bắt đầu và ngày kết thúc');
-            return;
-        }
+        const err = validateDateRange(reportStartDate, reportEndDate, 730);
+        if (err) { showWarning(err); return; }
     }
     loadReports();
 }
@@ -1272,6 +1274,43 @@ function formatCurrency(amount) {
         style: 'currency',
         currency: 'VND'
     }).format(amount || 0);
+}
+
+// ============================================
+// VALIDATION HELPERS (Reusable across Admin)
+// ============================================
+
+function sanitizeString(value, maxLen = 200) {
+    if (typeof value !== 'string') return '';
+    const trimmed = value.trim();
+    if (trimmed.length > maxLen) {
+        return trimmed.substring(0, maxLen);
+    }
+    return trimmed;
+}
+
+function validateRequired(value, fieldLabel = 'Trường này') {
+    if (value === undefined || value === null) return `${fieldLabel} là bắt buộc`;
+    if (typeof value === 'string' && value.trim() === '') return `${fieldLabel} là bắt buộc`;
+    return null;
+}
+
+function validateNumberInRange(value, min, max, fieldLabel = 'Giá trị') {
+    const num = Number(value);
+    if (!Number.isFinite(num)) return `${fieldLabel} không hợp lệ`;
+    if (num < min || num > max) return `${fieldLabel} phải trong khoảng ${min}-${max}`;
+    return null;
+}
+
+function validateDateRange(start, end, maxDays = 730) {
+    if (!start || !end) return 'Vui lòng chọn đầy đủ ngày bắt đầu và kết thúc';
+    const s = new Date(start);
+    const e = new Date(end);
+    if (isNaN(s.getTime()) || isNaN(e.getTime())) return 'Khoảng ngày không hợp lệ';
+    if (s > e) return 'Ngày bắt đầu không được sau ngày kết thúc';
+    const diffDays = Math.ceil((e - s) / (1000 * 60 * 60 * 24));
+    if (diffDays > maxDays) return `Khoảng thời gian tối đa là ${maxDays} ngày`;
+    return null;
 }
 
 // Update loadDashboard to show notification badge
